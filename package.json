@@ -1,0 +1,24 @@
+{
+  "name": "stfuel-webapp",
+  "version": "1.0.0",
+  "description": "sTFuel Web3 Application - Monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:backend": "cd packages/backend && npm run dev",
+    "build:backend": "cd packages/backend && npm run build",
+    "start:backend": "cd packages/backend && npm start",
+    "dev:frontend": "cd packages/frontend && npm run dev",
+    "build:frontend": "cd packages/frontend && npm run build",
+    "start:frontend": "cd packages/frontend && npm start",
+    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
+    "build": "npm run build:backend && npm run build:frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "typescript": "^5.3.3",
+    "@types/node": "^20.10.5"
+  }
+}
