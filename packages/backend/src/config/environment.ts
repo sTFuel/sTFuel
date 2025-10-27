@@ -1,0 +1,31 @@
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+export const config = {
+  // Blockchain
+  thetaRpcUrls: process.env.THETA_RPC_URLS?.split(',') || [
+    // 'https://eth-rpc-api.thetatoken.org/rpc',
+    'https://eth-rpc-api-testnet.thetatoken.org/rpc'
+  ],
+  nodeManagerAddress: process.env.NODE_MANAGER_ADDRESS || '',
+  stfuelAddress: process.env.STFUEL_ADDRESS || '',
+  startBlock: parseInt(process.env.START_BLOCK || '0'),
+
+  // Database
+  databaseUrl: process.env.DATABASE_URL || 'postgresql://username:password@localhost:5432/stfuel_tracker',
+
+  // Server
+  port: parseInt(process.env.PORT || '4000'),
+  nodeEnv: process.env.NODE_ENV || 'development',
+
+  // Logging
+  logLevel: process.env.LOG_LEVEL || 'info',
+
+  // RPC Configuration
+  rpcRetryAttempts: parseInt(process.env.RPC_RETRY_ATTEMPTS || '3'),
+  rpcRetryDelay: parseInt(process.env.RPC_RETRY_DELAY || '5000'),
+  rpcTimeout: parseInt(process.env.RPC_TIMEOUT || '30000'),
+};
+
+export default config;

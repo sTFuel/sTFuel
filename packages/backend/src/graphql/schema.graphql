@@ -1,0 +1,255 @@
+type Query {
+  # Event queries
+  nodeManagerEvents(
+    first: Int = 50
+    after: String
+    eventName: String
+    address: String
+    fromBlock: BigInt
+    toBlock: BigInt
+  ): NodeManagerEventConnection
+
+  stfuelEvents(
+    first: Int = 50
+    after: String
+    eventName: String
+    address: String
+    fromBlock: BigInt
+    toBlock: BigInt
+  ): StfuelEventConnection
+
+  # Snapshot queries
+  hourlySnapshots(
+    first: Int = 50
+    after: String
+    fromDate: String
+    toDate: String
+  ): HourlySnapshotConnection
+
+  latestSnapshot: HourlySnapshot
+
+  # Sync status
+  syncStatus: SyncStatus
+
+  # Normalized table queries
+  edgeNodes(
+    first: Int = 50
+    after: String
+    isActive: Boolean
+    isFaulty: Boolean
+    nodeType: String
+  ): EdgeNodeConnection
+
+  edgeNode(address: String!): EdgeNode
+
+  users(
+    first: Int = 50
+    after: String
+    minBalance: String
+  ): UserConnection
+
+  user(address: String!): User
+
+  redemptionQueue(
+    first: Int = 50
+    after: String
+    status: String
+    userAddress: String
+  ): RedemptionQueueConnection
+}
+
+type NodeManagerEvent {
+  id: ID!
+  eventName: String!
+  blockNumber: BigInt!
+  transactionHash: String!
+  transactionIndex: Int!
+  logIndex: Int!
+  timestamp: String!
+  address: String!
+  args: JSON
+  data: String
+  topics: [String!]
+  createdAt: String!
+}
+
+type StfuelEvent {
+  id: ID!
+  eventName: String!
+  blockNumber: BigInt!
+  transactionHash: String!
+  transactionIndex: Int!
+  logIndex: Int!
+  timestamp: String!
+  address: String!
+  args: JSON
+  data: String
+  topics: [String!]
+  createdAt: String!
+}
+
+type HourlySnapshot {
+  id: ID!
+  blockNumber: BigInt!
+  snapshotTimestamp: String!
+  tfuelBackingAmount: String!
+  tfuelStakedAmount: String!
+  stfuelTotalSupply: String!
+  currentHoldersCount: Int!
+  historicalHoldersCount: Int!
+  totalReferralRewards: String!
+  edgeNodesCount: Int!
+  createdAt: String!
+}
+
+type SyncStatus {
+  lastBlockNumber: BigInt!
+  isScanning: Boolean!
+  currentBlockNumber: BigInt
+}
+
+type NodeManagerEventConnection {
+  edges: [NodeManagerEventEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type StfuelEventConnection {
+  edges: [StfuelEventEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type HourlySnapshotConnection {
+  edges: [HourlySnapshotEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type NodeManagerEventEdge {
+  node: NodeManagerEvent!
+  cursor: String!
+}
+
+type StfuelEventEdge {
+  node: StfuelEvent!
+  cursor: String!
+}
+
+type HourlySnapshotEdge {
+  node: HourlySnapshot!
+  cursor: String!
+}
+
+type PageInfo {
+  hasNextPage: Boolean!
+  hasPreviousPage: Boolean!
+  startCursor: String
+  endCursor: String
+}
+
+# Normalized table types
+type Address {
+  id: ID!
+  address: String!
+  createdAt: String!
+  updatedAt: String!
+}
+
+type EdgeNode {
+  id: ID!
+  address: Address!
+  registrationBlock: BigInt!
+  registrationTimestamp: String!
+  isActive: Boolean!
+  deactivationBlock: BigInt
+  deactivationTimestamp: String
+  isFaulty: Boolean!
+  faultyBlock: BigInt
+  faultyTimestamp: String
+  recoveryBlock: BigInt
+  recoveryTimestamp: String
+  totalStaked: String!
+  totalUnstaked: String!
+  unstakeBlock: BigInt
+  nodeType: String
+  isLive: Boolean!
+  createdAt: String!
+  updatedAt: String!
+}
+
+type User {
+  id: ID!
+  address: Address!
+  stfuelBalance: String!
+  totalDeposited: String!
+  totalWithdrawn: String!
+  totalMinted: String!
+  totalBurned: String!
+  totalKeeperFeesEarned: String!
+  totalReferralFeesEarned: String!
+  totalEnteringFeesPaid: String!
+  totalExitFeesPaid: String!
+  creditsAvailable: String!
+  firstActivityBlock: BigInt
+  firstActivityTimestamp: String
+  lastActivityBlock: BigInt
+  lastActivityTimestamp: String
+  createdAt: String!
+  updatedAt: String!
+}
+
+type RedemptionQueue {
+  id: ID!
+  userAddress: Address!
+  requestBlock: BigInt!
+  requestTimestamp: String!
+  stfuelAmountBurned: String!
+  tfuelAmountExpected: String!
+  keepersTipFee: String!
+  unlockBlockNumber: BigInt!
+  unlockTimestamp: String
+  queueIndex: BigInt!
+  status: String!
+  creditedBlock: BigInt
+  creditedTimestamp: String
+  createdAt: String!
+  updatedAt: String!
+}
+
+# Connection types for pagination
+type EdgeNodeConnection {
+  edges: [EdgeNodeEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type UserConnection {
+  edges: [UserEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type RedemptionQueueConnection {
+  edges: [RedemptionQueueEdge!]!
+  pageInfo: PageInfo!
+  totalCount: Int!
+}
+
+type EdgeNodeEdge {
+  node: EdgeNode!
+  cursor: String!
+}
+
+type UserEdge {
+  node: User!
+  cursor: String!
+}
+
+type RedemptionQueueEdge {
+  node: RedemptionQueue!
+  cursor: String!
+}
+
+scalar BigInt
+scalar JSON
