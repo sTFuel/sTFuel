@@ -47,9 +47,10 @@ export class SnapshotService {
     const lastSnapshot = await this.getLatestSnapshot();
     
     if (lastSnapshot) {
-      // If we have a last snapshot, set next snapshot to next full hour after it
-      const lastSnapshotTime = Math.floor(lastSnapshot.snapshotTimestamp.getTime() / 1000);
-      this.setNextSnapshotTime(lastSnapshotTime);
+      // If we have a last snapshot, set next snapshot to next full hour from current time
+      // This ensures we don't get stuck in the past if the service was restarted
+      const currentTime = Math.floor(Date.now() / 1000);
+      this.setNextSnapshotTime(currentTime);
       console.log(`Initialized next snapshot time: ${new Date(this.nextSnapshotTime! * 1000).toISOString()}`);
     } else {
       // No snapshots exist yet, create snapshot immediately and set next time

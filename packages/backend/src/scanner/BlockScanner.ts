@@ -140,7 +140,10 @@ export class BlockScanner {
         log.address.toLowerCase() === stfuelAddress
       );
 
-      // Skip block if no relevant events found
+      // Check if we need to create a snapshot (based on block timestamp) - ALWAYS check, regardless of events
+      await this.snapshotService.checkAndCreateSnapshot(blockNumber, block.timestamp);
+
+      // Skip event processing if no relevant events found
       if (nodeManagerLogs.length === 0 && stfuelLogs.length === 0) {
         return;
       }
@@ -183,9 +186,6 @@ export class BlockScanner {
         // Release the query runner
         await queryRunner.release();
       }
-
-      // Check if we need to create a snapshot (based on block timestamp)
-      await this.snapshotService.checkAndCreateSnapshot(blockNumber, block.timestamp);
 
     } catch (error) {
       console.error(`Error scanning block ${blockNumber}:`, error);
