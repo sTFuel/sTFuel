@@ -13,8 +13,8 @@ export class EventProcessor {
     this.stfuelEventRepo = AppDataSource.getRepository(StfuelEvent);
   }
 
-  async processNodeManagerEvents(logs: any[], queryRunner?: QueryRunner): Promise<{ events: Partial<NodeManagerEvent>[], wasNew: boolean }> {
-    const events = this.parseNodeManagerEvents(logs);
+  async processNodeManagerEvents(logs: any[], blockTimestamp: number, queryRunner?: QueryRunner): Promise<{ events: Partial<NodeManagerEvent>[], wasNew: boolean }> {
+    const events = this.parseNodeManagerEvents(logs, blockTimestamp);
     
     if (events.length > 0) {
       console.log(`Saving ${events.length} NodeManager events to database`);
@@ -50,7 +50,7 @@ export class EventProcessor {
     }
   }
 
-  parseNodeManagerEvents(logs: any[]): Partial<NodeManagerEvent>[] {
+  parseNodeManagerEvents(logs: any[], blockTimestamp: number): Partial<NodeManagerEvent>[] {
     const events: Partial<NodeManagerEvent>[] = [];
 
     for (const log of logs) {
@@ -61,7 +61,7 @@ export class EventProcessor {
           transactionHash: log.transactionHash,
           transactionIndex: log.transactionIndex,
           logIndex: log.index !== undefined ? log.index : 0, // Use 'index' field instead of 'logIndex'
-          timestamp: new Date((log.timestamp || Date.now() / 1000) * 1000),
+          timestamp: blockTimestamp,
           address: log.address,
           args: this.parseEventArgs(log),
           data: log.data,
@@ -92,8 +92,8 @@ export class EventProcessor {
     return events;
   }
 
-  async processStfuelEvents(logs: any[], queryRunner?: QueryRunner): Promise<{ events: Partial<StfuelEvent>[], wasNew: boolean }> {
-    const events = this.parseStfuelEvents(logs);
+  async processStfuelEvents(logs: any[], blockTimestamp: number, queryRunner?: QueryRunner): Promise<{ events: Partial<StfuelEvent>[], wasNew: boolean }> {
+    const events = this.parseStfuelEvents(logs, blockTimestamp);
     
     if (events.length > 0) {
       console.log(`Saving ${events.length} sTFuel events to database`);
@@ -129,7 +129,7 @@ export class EventProcessor {
     }
   }
 
-  parseStfuelEvents(logs: any[]): Partial<StfuelEvent>[] {
+  parseStfuelEvents(logs: any[], blockTimestamp: number): Partial<StfuelEvent>[] {
     const events: Partial<StfuelEvent>[] = [];
 
     for (const log of logs) {
@@ -140,7 +140,7 @@ export class EventProcessor {
           transactionHash: log.transactionHash,
           transactionIndex: log.transactionIndex,
           logIndex: log.index !== undefined ? log.index : 0, // Use 'index' field instead of 'logIndex'
-          timestamp: new Date((log.timestamp || Date.now() / 1000) * 1000),
+          timestamp: blockTimestamp,
           address: log.address,
           args: this.parseEventArgs(log),
           data: log.data,
@@ -214,22 +214,18 @@ export class EventProcessor {
 
   private parseEventArgs(log: any): any {
     try {
-      // For now, let's use a simpler approach and just extract basic info
-      // The full event parsing can be implemented later with proper ABI matching
-      
-      const result: any = {
-        topics: log.topics,
-        data: log.data,
-        address: log.address,
-      };
+      // Start with an empty result object - only add parsed values
+      const result: any = {};
 
+      // Get the event name from the first topic
+      const eventName = this.getEventNameFromTopic(log.topics[0]);
+      
       // Try to extract basic information from topics for indexed parameters
       if (log.topics && log.topics.length > 1) {
         // First topic is the event signature, rest are indexed parameters
         const indexedParams = log.topics.slice(1);
         
         // For common events, try to extract known parameters
-        const eventName = this.getEventNameFromTopic(log.topics[0]);
         
         switch (eventName) {
           // NodeManager Events
@@ -306,21 +302,6 @@ export class EventProcessor {
                 } catch (e) {
                   console.warn('Failed to parse CreditAssigned data:', e);
                 }
-              }
-            }
-            break;
-            
-          case 'CurrentNetAssets':
-            if (log.data && log.data !== '0x') {
-              try {
-                const data = ethers.AbiCoder.defaultAbiCoder().decode(
-                  ['uint256', 'bool'],
-                  log.data
-                );
-                result.netAssets = data[0].toString();
-                result.isExact = data[1];
-              } catch (e) {
-                console.warn('Failed to parse CurrentNetAssets data:', e);
               }
             }
             break;
@@ -468,16 +449,30 @@ export class EventProcessor {
             }
             break;
         }
+      } else {
+        // Handle events with no indexed parameters (only data field)
+        switch (eventName) {
+          case 'CurrentNetAssets':
+            if (log.data && log.data !== '0x') {
+              try {
+                const data = ethers.AbiCoder.defaultAbiCoder().decode(
+                  ['uint256', 'bool'],
+                  log.data
+                );
+                result.netAssets = data[0].toString();
+                result.isExact = data[1];
+              } catch (e) {
+                console.warn('Failed to parse CurrentNetAssets data:', e);
+              }
+            }
+            break;
+        }
       }
 
       return result;
     } catch (error) {
       console.error('Error parsing event args:', error);
-      return {
-        topics: log.topics,
-        data: log.data,
-        address: log.address,
-      };
+      return {};
     }
   }
 }

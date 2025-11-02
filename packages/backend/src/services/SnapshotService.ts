@@ -22,36 +22,43 @@ export class SnapshotService {
   async checkAndCreateSnapshot(blockNumber: number, blockTimestamp: number): Promise<void> {
     // If we don't have the next snapshot time set, initialize it
     if (this.nextSnapshotTime === null) {
-      await this.initializeNextSnapshotTime();
+      await this.initializeNextSnapshotTime(blockTimestamp);
     }
 
     // Check if it's time for a snapshot
     if (blockTimestamp >= this.nextSnapshotTime!) {
-      const blockDate = new Date(blockTimestamp * 1000);
-      console.log(`Creating snapshot for block ${blockNumber} at ${blockDate.toISOString()}`);
+      console.log(`Creating snapshot for block ${blockNumber} at timestamp ${blockTimestamp}`);
       
-      await this.createSnapshot(blockNumber, blockDate);
+      await this.createSnapshot(blockNumber, blockTimestamp);
       
       // Set next snapshot time to next full hour
       this.setNextSnapshotTime(blockTimestamp);
     } else {
       // Optional: Log every 100 blocks to show efficiency (remove in production)
       if (blockNumber % 100 === 0) {
-        const nextSnapshotDate = new Date(this.nextSnapshotTime! * 1000);
-        console.log(`Block ${blockNumber}: Next snapshot at ${nextSnapshotDate.toISOString()}`);
+        console.log(`Block ${blockNumber}: Next snapshot at timestamp ${this.nextSnapshotTime}`);
       }
     }
   }
 
-  private async initializeNextSnapshotTime(): Promise<void> {
+  private async initializeNextSnapshotTime(blockTimestamp: number): Promise<void> {
     const lastSnapshot = await this.getLatestSnapshot();
     
     if (lastSnapshot) {
-      // If we have a last snapshot, set next snapshot to next full hour from current time
-      // This ensures we don't get stuck in the past if the service was restarted
+      // Check if we're scanning historical data or live data
       const currentTime = Math.floor(Date.now() / 1000);
-      this.setNextSnapshotTime(currentTime);
-      console.log(`Initialized next snapshot time: ${new Date(this.nextSnapshotTime! * 1000).toISOString()}`);
+      const timeDiff = Math.abs(currentTime - blockTimestamp);
+      
+      if (timeDiff > 3600) { // More than 1 hour difference suggests historical scanning
+        // For historical scanning, use the block timestamp to determine next snapshot
+        console.log(`Historical scanning detected (${Math.floor(timeDiff / 3600)} hours difference), using block timestamp for snapshot timing`);
+        this.setNextSnapshotTime(blockTimestamp);
+      } else {
+        // For live scanning, use current time to avoid getting stuck in the past
+        console.log(`Live scanning detected, using current time for snapshot timing`);
+        this.setNextSnapshotTime(currentTime);
+      }
+      console.log(`Initialized next snapshot time: ${this.nextSnapshotTime}`);
     } else {
       // No snapshots exist yet, create snapshot immediately and set next time
       console.log('No existing snapshots found, will create first snapshot on next block');
@@ -60,19 +67,18 @@ export class SnapshotService {
   }
 
   private setNextSnapshotTime(currentTimestamp: number): void {
+    // Get next full hour using Unix timestamp arithmetic
     const currentDate = new Date(currentTimestamp * 1000);
-    
-    // Get next full hour
     const nextHour = new Date(currentDate);
     nextHour.setUTCHours(currentDate.getUTCHours() + 1, 0, 0, 0); // Next hour at :00:00
     
     this.nextSnapshotTime = Math.floor(nextHour.getTime() / 1000);
-    console.log(`Next snapshot scheduled for: ${nextHour.toISOString()}`);
+    console.log(`Next snapshot scheduled for timestamp: ${this.nextSnapshotTime}`);
   }
 
-  private async createSnapshot(blockNumber: number, timestamp: Date): Promise<void> {
+  private async createSnapshot(blockNumber: number, timestamp: number): Promise<void> {
     try {
-      console.log(`Creating snapshot for block ${blockNumber} at ${timestamp.toISOString()}`);
+      console.log(`Creating snapshot for block ${blockNumber} at timestamp ${timestamp}`);
 
       // Calculate all metrics from events
       const metrics = await this.calculateMetrics(blockNumber);
@@ -109,6 +115,7 @@ export class SnapshotService {
       // Create snapshot
       const snapshot = new HourlySnapshot();
       snapshot.blockNumber = blockNumber.toString();
+      // Store timestamp as Unix timestamp
       snapshot.snapshotTimestamp = timestamp;
       snapshot.tfuelBackingAmount = tfuelBackingAmount.toString();
       snapshot.tfuelStakedAmount = metrics.tfuelStakedAmount.toString();
@@ -532,12 +539,12 @@ export class SnapshotService {
     }
   }
 
-  async getSnapshotsInRange(startDate: Date, endDate: Date): Promise<HourlySnapshot[]> {
+  async getSnapshotsInRange(startTimestamp: number, endTimestamp: number): Promise<HourlySnapshot[]> {
     try {
       return await this.snapshotRepo
         .createQueryBuilder('snapshot')
-        .where('snapshot.snapshotTimestamp >= :startDate', { startDate })
-        .andWhere('snapshot.snapshotTimestamp <= :endDate', { endDate })
+        .where('snapshot.snapshotTimestamp >= :startTimestamp', { startTimestamp })
+        .andWhere('snapshot.snapshotTimestamp <= :endTimestamp', { endTimestamp })
         .orderBy('snapshot.snapshotTimestamp', 'ASC')
         .getMany();
     } catch (error) {
@@ -548,34 +555,35 @@ export class SnapshotService {
 
   private async getTfuelBackingFromCurrentNetAssets(blockNumber: number): Promise<bigint> {
     try {
-      // First try to find CurrentNetAssets event with isExact = true
+      // For historical scanning, find the most recent CurrentNetAssets event with isExact = true
+      // This ensures we get the latest available accurate net assets value
       const exactEvent = await this.nodeManagerEventRepo
         .createQueryBuilder('event')
         .where('event.eventName = :eventName', { eventName: 'CurrentNetAssets' })
         .andWhere('event.args->>\'isExact\' = :isExact', { isExact: 'true' })
-        .andWhere('CAST(event.blockNumber AS bigint) <= :blockNumber', { blockNumber: blockNumber.toString() })
         .orderBy('CAST(event.blockNumber AS bigint)', 'DESC')
         .getOne();
 
       if (exactEvent && exactEvent.args && exactEvent.args.netAssets) {
+        console.log(`Using most recent exact CurrentNetAssets event at block ${exactEvent.blockNumber} with netAssets: ${exactEvent.args.netAssets} for snapshot at block ${blockNumber}`);
         return BigInt(exactEvent.args.netAssets);
       }
 
-      // If no exact event found, try to find latest CurrentNetAssets with isExact = false
+      // If no exact event found, try to find the most recent CurrentNetAssets with isExact = false
       const approximateEvent = await this.nodeManagerEventRepo
         .createQueryBuilder('event')
         .where('event.eventName = :eventName', { eventName: 'CurrentNetAssets' })
         .andWhere('event.args->>\'isExact\' = :isExact', { isExact: 'false' })
-        .andWhere('CAST(event.blockNumber AS bigint) <= :blockNumber', { blockNumber: blockNumber.toString() })
         .orderBy('CAST(event.blockNumber AS bigint)', 'DESC')
         .getOne();
 
       if (approximateEvent && approximateEvent.args && approximateEvent.args.netAssets) {
+        console.log(`Using most recent approximate CurrentNetAssets event at block ${approximateEvent.blockNumber} with netAssets: ${approximateEvent.args.netAssets} for snapshot at block ${blockNumber}`);
         return BigInt(approximateEvent.args.netAssets);
       }
 
-      // If no CurrentNetAssets events found, return 0
-      console.warn(`No CurrentNetAssets events found for block ${blockNumber}, using 0`);
+      // If no CurrentNetAssets events found at all, return 0
+      console.warn(`No CurrentNetAssets events found in database for snapshot at block ${blockNumber}, using 0`);
       return BigInt(0);
     } catch (error) {
       console.error('Error getting TFuel backing from CurrentNetAssets events:', error);
@@ -583,8 +591,8 @@ export class SnapshotService {
     }
   }
 
-  getNextSnapshotTime(): Date | null {
-    return this.nextSnapshotTime ? new Date(this.nextSnapshotTime * 1000) : null;
+  getNextSnapshotTime(): number | null {
+    return this.nextSnapshotTime;
   }
 }
 

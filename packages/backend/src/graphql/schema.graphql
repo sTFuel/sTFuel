@@ -26,6 +26,13 @@ type Query {
     toDate: String
   ): HourlySnapshotConnection
 
+  dailySnapshots(
+    first: Int = 50
+    after: String
+    fromDate: String
+    toDate: String
+  ): HourlySnapshotConnection
+
   latestSnapshot: HourlySnapshot
 
   # Sync status

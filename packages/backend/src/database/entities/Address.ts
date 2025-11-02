@@ -6,7 +6,7 @@ export class Address {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ unique: true })
+  @Column({ unique: true, length: 42 })
   address: string;
 
   @CreateDateColumn()

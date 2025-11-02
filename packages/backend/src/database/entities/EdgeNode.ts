@@ -27,8 +27,8 @@ export class EdgeNode {
   @Column({ type: 'bigint' })
   registrationBlock: string;
 
-  @Column({ type: 'timestamp' })
-  registrationTimestamp: Date;
+  @Column({ type: 'int' })
+  registrationTimestamp: number;
 
   @Column({ default: true })
   isActive: boolean;
@@ -36,8 +36,8 @@ export class EdgeNode {
   @Column({ type: 'bigint', nullable: true })
   deactivationBlock: string;
 
-  @Column({ type: 'timestamp', nullable: true })
-  deactivationTimestamp: Date;
+  @Column({ type: 'int', nullable: true })
+  deactivationTimestamp: number;
 
   @Column({ default: false })
   isFaulty: boolean;
@@ -45,14 +45,14 @@ export class EdgeNode {
   @Column({ type: 'bigint', nullable: true })
   faultyBlock: string;
 
-  @Column({ type: 'timestamp', nullable: true })
-  faultyTimestamp: Date;
+  @Column({ type: 'int', nullable: true })
+  faultyTimestamp: number;
 
   @Column({ type: 'bigint', nullable: true })
   recoveryBlock: string;
 
-  @Column({ type: 'timestamp', nullable: true })
-  recoveryTimestamp: Date;
+  @Column({ type: 'int', nullable: true })
+  recoveryTimestamp: number;
 
   @Column({ type: 'numeric', precision: 78, scale: 0, default: '0' })
   totalStaked: string;

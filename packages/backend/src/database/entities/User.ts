@@ -47,14 +47,14 @@ export class User {
   @Column({ type: 'bigint', nullable: true })
   firstActivityBlock: string;
 
-  @Column({ type: 'timestamp', nullable: true })
-  firstActivityTimestamp: Date;
+  @Column({ type: 'int', nullable: true })
+  firstActivityTimestamp: number;
 
   @Column({ type: 'bigint', nullable: true })
   lastActivityBlock: string;
 
-  @Column({ type: 'timestamp', nullable: true })
-  lastActivityTimestamp: Date;
+  @Column({ type: 'int', nullable: true })
+  lastActivityTimestamp: number;
 
   @CreateDateColumn()
   createdAt: Date;

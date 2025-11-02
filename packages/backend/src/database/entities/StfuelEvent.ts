@@ -24,8 +24,8 @@ export class StfuelEvent {
   @Column()
   logIndex: number;
 
-  @Column({ type: 'timestamp' })
-  timestamp: Date;
+  @Column({ type: 'int' })
+  timestamp: number;
 
   @Column()
   address: string;

@@ -27,14 +27,58 @@ export class NormalizedEventProcessor {
     const manager = queryRunner ? queryRunner.manager : AppDataSource.manager;
     const addressRepo = manager.getRepository(Address);
     
-    let addressRecord = await addressRepo.findOne({ where: { address } });
+    // Normalize address to ensure it's 42 characters (0x + 40 hex chars)
+    const normalizedAddress = this.normalizeAddress(address);
+    
+    let addressRecord = await addressRepo.findOne({ where: { address: normalizedAddress } });
     
     if (!addressRecord) {
-      addressRecord = addressRepo.create({ address });
+      addressRecord = addressRepo.create({ address: normalizedAddress });
       addressRecord = await addressRepo.save(addressRecord);
     }
     
     return addressRecord;
+  }
+
+  /**
+   * Normalize Ethereum address to 42 characters
+   */
+  private normalizeAddress(address: string): string {
+    if (!address) {
+      throw new Error('Address cannot be empty');
+    }
+
+    // Remove any whitespace
+    const cleanAddress = address.trim();
+
+    // Check if it starts with 0x
+    if (!cleanAddress.startsWith('0x')) {
+      throw new Error(`Invalid address format: ${address} - must start with 0x`);
+    }
+
+    // Remove 0x prefix
+    const hexPart = cleanAddress.slice(2);
+    
+    // Handle both 20-byte (40 hex chars) and 32-byte (64 hex chars) addresses
+    let normalizedHex: string;
+    if (hexPart.length === 40) {
+      // Standard 20-byte address
+      normalizedHex = hexPart;
+    } else if (hexPart.length === 64) {
+      // 32-byte address - take the last 40 characters (rightmost 20 bytes)
+      // This handles cases where addresses are padded with zeros
+      normalizedHex = hexPart.slice(-40);
+    } else {
+      throw new Error(`Invalid address length: ${address} - must be 42 characters (0x + 40 hex chars) or 66 characters (0x + 64 hex chars)`);
+    }
+
+    // Check if it contains only valid hex characters
+    if (!/^[0-9a-fA-F]{40}$/.test(normalizedHex)) {
+      throw new Error(`Invalid address format: ${address} - must contain only hex characters`);
+    }
+
+    // Return normalized address (lowercase for consistency)
+    return `0x${normalizedHex.toLowerCase()}`;
   }
 
   /**

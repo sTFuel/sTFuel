@@ -46,6 +46,52 @@ const JSONScalar = new GraphQLScalarType({
 export const resolvers = {
   BigInt: BigIntScalar,
   JSON: JSONScalar,
+  
+  // Field resolvers to convert Unix timestamps to ISO strings
+  NodeManagerEvent: {
+    timestamp: (parent: any) => new Date(parent.timestamp * 1000).toISOString(),
+    createdAt: (parent: any) => parent.createdAt.toISOString(),
+  },
+  
+  StfuelEvent: {
+    timestamp: (parent: any) => new Date(parent.timestamp * 1000).toISOString(),
+    createdAt: (parent: any) => parent.createdAt.toISOString(),
+  },
+  
+  HourlySnapshot: {
+    snapshotTimestamp: (parent: any) => new Date(parent.snapshotTimestamp * 1000).toISOString(),
+    createdAt: (parent: any) => parent.createdAt.toISOString(),
+  },
+  
+  EdgeNode: {
+    registrationTimestamp: (parent: any) => new Date(parent.registrationTimestamp * 1000).toISOString(),
+    deactivationTimestamp: (parent: any) => parent.deactivationTimestamp ? new Date(parent.deactivationTimestamp * 1000).toISOString() : null,
+    faultyTimestamp: (parent: any) => parent.faultyTimestamp ? new Date(parent.faultyTimestamp * 1000).toISOString() : null,
+    recoveryTimestamp: (parent: any) => parent.recoveryTimestamp ? new Date(parent.recoveryTimestamp * 1000).toISOString() : null,
+    createdAt: (parent: any) => parent.createdAt.toISOString(),
+    updatedAt: (parent: any) => parent.updatedAt.toISOString(),
+  },
+  
+  User: {
+    firstActivityTimestamp: (parent: any) => parent.firstActivityTimestamp ? new Date(parent.firstActivityTimestamp * 1000).toISOString() : null,
+    lastActivityTimestamp: (parent: any) => parent.lastActivityTimestamp ? new Date(parent.lastActivityTimestamp * 1000).toISOString() : null,
+    createdAt: (parent: any) => parent.createdAt.toISOString(),
+    updatedAt: (parent: any) => parent.updatedAt.toISOString(),
+  },
+  
+  RedemptionQueue: {
+    requestTimestamp: (parent: any) => new Date(parent.requestTimestamp * 1000).toISOString(),
+    unlockTimestamp: (parent: any) => parent.unlockTimestamp ? new Date(parent.unlockTimestamp * 1000).toISOString() : null,
+    creditedTimestamp: (parent: any) => parent.creditedTimestamp ? new Date(parent.creditedTimestamp * 1000).toISOString() : null,
+    createdAt: (parent: any) => parent.createdAt.toISOString(),
+    updatedAt: (parent: any) => parent.updatedAt.toISOString(),
+  },
+  
+  Address: {
+    createdAt: (parent: any) => parent.createdAt.toISOString(),
+    updatedAt: (parent: any) => parent.updatedAt.toISOString(),
+  },
+  
   Query: {
     async nodeManagerEvents(
       _: any,
@@ -210,12 +256,14 @@ export const resolvers = {
       const repo = AppDataSource.getRepository(HourlySnapshot);
       let query = repo.createQueryBuilder('snapshot');
 
-      // Apply date filters
+      // Apply date filters - convert ISO date strings to Unix timestamps
       if (fromDate) {
-        query = query.andWhere('snapshot.snapshotTimestamp >= :fromDate', { fromDate });
+        const fromTimestamp = Math.floor(new Date(fromDate).getTime() / 1000);
+        query = query.andWhere('snapshot.snapshotTimestamp >= :fromTimestamp', { fromTimestamp });
       }
       if (toDate) {
-        query = query.andWhere('snapshot.snapshotTimestamp <= :toDate', { toDate });
+        const toTimestamp = Math.floor(new Date(toDate).getTime() / 1000);
+        query = query.andWhere('snapshot.snapshotTimestamp <= :toTimestamp', { toTimestamp });
       }
 
       // Apply cursor-based pagination
@@ -251,6 +299,87 @@ export const resolvers = {
           endCursor: edges[edges.length - 1]?.cursor || null,
         },
         totalCount,
+      };
+    },
+
+    async dailySnapshots(
+      _: any,
+      {
+        first = 50,
+        after,
+        fromDate,
+        toDate,
+      }: {
+        first: number;
+        after?: string;
+        fromDate?: string;
+        toDate?: string;
+      }
+    ) {
+      const repo = AppDataSource.getRepository(HourlySnapshot);
+      
+      // Build the base query with date filters - convert ISO date strings to Unix timestamps
+      let baseQuery = repo.createQueryBuilder('snapshot');
+      
+      if (fromDate) {
+        const fromTimestamp = Math.floor(new Date(fromDate).getTime() / 1000);
+        baseQuery = baseQuery.andWhere('snapshot.snapshotTimestamp >= :fromTimestamp', { fromTimestamp });
+      }
+      if (toDate) {
+        const toTimestamp = Math.floor(new Date(toDate).getTime() / 1000);
+        baseQuery = baseQuery.andWhere('snapshot.snapshotTimestamp <= :toTimestamp', { toTimestamp });
+      }
+
+      // Get all snapshots in the date range, ordered by timestamp DESC
+      const allSnapshots = await baseQuery
+        .orderBy('snapshot.snapshotTimestamp', 'DESC')
+        .getMany();
+
+      // Group snapshots by day and select the first (most recent) snapshot of each day
+      const dailySnapshotsMap = new Map();
+      
+      allSnapshots.forEach((snapshot) => {
+        const snapshotDate = new Date(Number(snapshot.snapshotTimestamp) * 1000);
+        const dayKey = snapshotDate.toISOString().split('T')[0]; // YYYY-MM-DD format
+        
+        if (!dailySnapshotsMap.has(dayKey)) {
+          dailySnapshotsMap.set(dayKey, snapshot);
+        }
+      });
+
+      // Convert map to array and sort by timestamp DESC
+      const dailySnapshots = Array.from(dailySnapshotsMap.values())
+        .sort((a, b) => Number(b.snapshotTimestamp) - Number(a.snapshotTimestamp));
+
+      // Apply pagination
+      let startIndex = 0;
+      if (after) {
+        const afterId = parseInt(after);
+        const afterIndex = dailySnapshots.findIndex(s => s.id === afterId);
+        if (afterIndex !== -1) {
+          startIndex = afterIndex + 1;
+        }
+      }
+
+      const paginatedSnapshots = dailySnapshots.slice(startIndex, startIndex + first);
+
+      const edges = paginatedSnapshots.map((snapshot) => ({
+        node: snapshot,
+        cursor: snapshot.id.toString(),
+      }));
+
+      const hasNextPage = startIndex + first < dailySnapshots.length;
+      const hasPreviousPage = !!after;
+
+      return {
+        edges,
+        pageInfo: {
+          hasNextPage,
+          hasPreviousPage,
+          startCursor: edges[0]?.cursor || null,
+          endCursor: edges[edges.length - 1]?.cursor || null,
+        },
+        totalCount: dailySnapshots.length,
       };
     },
 
@@ -362,9 +491,19 @@ export const resolvers = {
       let query = repo.createQueryBuilder('user')
         .leftJoinAndSelect('user.address', 'address');
 
-      // Apply filters
+      // Apply filters - handle negative balances and use proper numeric comparison
       if (minBalance) {
-        query = query.andWhere('CAST(user.stfuelBalance AS bigint) >= :minBalance', { minBalance });
+        // Convert minBalance to a more reasonable format for comparison
+        const minBalanceNum = parseFloat(minBalance);
+        if (!isNaN(minBalanceNum) && minBalanceNum > 0) {
+          // Filter out negative balances and zero address, then apply minimum balance filter
+          query = query
+            .andWhere('CAST(user.stfuelBalance AS numeric) >= 0') // Exclude negative balances
+            .andWhere('CAST(user.stfuelBalance AS numeric) >= :minBalanceNum', { minBalanceNum });
+        }
+      } else {
+        // Even without minBalance filter, exclude negative balances
+        query = query.andWhere('CAST(user.stfuelBalance AS numeric) >= 0');
       }
 
       // Apply cursor-based pagination
@@ -373,13 +512,13 @@ export const resolvers = {
         query = query.andWhere('user.id > :afterId', { afterId });
       }
 
-      // Get total count
-      const totalCount = await query.getCount();
-
+      // Limit to maximum 100 users and order by balance descending
+      const maxFirst = Math.min(first, 100);
+      
       // Apply ordering and limit
       query = query
-        .orderBy('user.stfuelBalance', 'DESC')
-        .limit(first);
+        .orderBy('CAST(user.stfuelBalance AS numeric)', 'DESC')
+        .limit(maxFirst);
 
       const users = await query.getMany();
 
@@ -388,7 +527,7 @@ export const resolvers = {
         cursor: user.id.toString(),
       }));
 
-      const hasNextPage = users.length === first;
+      const hasNextPage = users.length === maxFirst;
       const hasPreviousPage = !!after;
 
       return {
@@ -399,16 +538,30 @@ export const resolvers = {
           startCursor: edges[0]?.cursor || null,
           endCursor: edges[edges.length - 1]?.cursor || null,
         },
-        totalCount,
+        totalCount: users.length, // Return actual count instead of total count to avoid expensive queries
       };
     },
 
     async user(_: any, { address }: { address: string }) {
+      console.log('User resolver called with address:', address);
       const repo = AppDataSource.getRepository(User);
-      return await repo.createQueryBuilder('user')
+      
+      // Try case-insensitive search first
+      const user = await repo.createQueryBuilder('user')
         .leftJoinAndSelect('user.address', 'address')
-        .where('address.address = :address', { address })
+        .where('LOWER(address.address) = LOWER(:address)', { address })
         .getOne();
+      
+      console.log('User found:', user ? 'Yes' : 'No');
+      if (user) {
+        console.log('User data:', {
+          id: user.id,
+          address: user.address?.address,
+          stfuelBalance: user.stfuelBalance
+        });
+      }
+      
+      return user;
     },
 
     async redemptionQueue(
@@ -434,7 +587,7 @@ export const resolvers = {
         query = query.andWhere('redemption.status = :status', { status });
       }
       if (userAddress) {
-        query = query.andWhere('address.address = :userAddress', { userAddress });
+        query = query.andWhere('LOWER(address.address) = LOWER(:userAddress)', { userAddress });
       }
 
       // Apply cursor-based pagination
@@ -448,7 +601,7 @@ export const resolvers = {
 
       // Apply ordering and limit
       query = query
-        .orderBy('redemption.requestBlock', 'DESC')
+        .orderBy('redemption.requestBlock', 'ASC')
         .limit(first);
 
       const redemptions = await query.getMany();

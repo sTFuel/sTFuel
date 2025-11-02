@@ -26,6 +26,11 @@ export const config = {
   rpcRetryAttempts: parseInt(process.env.RPC_RETRY_ATTEMPTS || '3'),
   rpcRetryDelay: parseInt(process.env.RPC_RETRY_DELAY || '5000'),
   rpcTimeout: parseInt(process.env.RPC_TIMEOUT || '30000'),
+  
+  // Block Scanner Configuration
+  batchSize: parseInt(process.env.BATCH_SIZE || '10'),
+  maxConcurrentBatches: parseInt(process.env.MAX_CONCURRENT_BATCHES || '3'),
+  batchDelay: parseInt(process.env.BATCH_DELAY || '100'),
 };
 
 export default config;

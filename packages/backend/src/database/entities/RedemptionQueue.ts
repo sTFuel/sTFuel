@@ -24,8 +24,8 @@ export class RedemptionQueue {
   @Column({ type: 'bigint' })
   requestBlock: string;
 
-  @Column({ type: 'timestamp' })
-  requestTimestamp: Date;
+  @Column({ type: 'int' })
+  requestTimestamp: number;
 
   @Column({ type: 'numeric', precision: 78, scale: 0 })
   stfuelAmountBurned: string;
@@ -39,8 +39,8 @@ export class RedemptionQueue {
   @Column({ type: 'bigint' })
   unlockBlockNumber: string;
 
-  @Column({ type: 'timestamp', nullable: true })
-  unlockTimestamp: Date;
+  @Column({ type: 'int', nullable: true })
+  unlockTimestamp: number;
 
   @Column({ type: 'bigint' })
   queueIndex: string;
@@ -55,8 +55,8 @@ export class RedemptionQueue {
   @Column({ type: 'bigint', nullable: true })
   creditedBlock: string;
 
-  @Column({ type: 'timestamp', nullable: true })
-  creditedTimestamp: Date;
+  @Column({ type: 'int', nullable: true })
+  creditedTimestamp: number;
 
   @CreateDateColumn()
   createdAt: Date;

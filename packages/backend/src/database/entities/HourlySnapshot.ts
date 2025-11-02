@@ -10,8 +10,8 @@ export class HourlySnapshot {
   @Column({ type: 'bigint' })
   blockNumber: string;
 
-  @Column({ type: 'timestamp' })
-  snapshotTimestamp: Date;
+  @Column({ type: 'int' })
+  snapshotTimestamp: number;
 
   @Column({ type: 'numeric', precision: 78, scale: 0 })
   tfuelBackingAmount: string;

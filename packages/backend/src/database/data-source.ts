@@ -16,6 +16,10 @@ const AppDataSource = new DataSource({
   migrations: ['src/database/migrations/*.ts'],
   synchronize: false, // Use migrations instead
   logging: config.nodeEnv === 'development',
+  extra: {
+    // Set timezone to UTC for all database operations
+    timezone: 'UTC'
+  }
 });
 
 export default AppDataSource;
