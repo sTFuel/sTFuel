@@ -352,6 +352,7 @@ export class NormalizedEventProcessor {
     
     const manager = queryRunner ? queryRunner.manager : AppDataSource.manager;
     const redemptionQueueRepo = manager.getRepository(RedemptionQueue);
+    const userRepo = manager.getRepository(User);
     
     // Find redemption queue entry by queueIndex
     const redemption = await redemptionQueueRepo.findOne({
@@ -373,6 +374,40 @@ export class NormalizedEventProcessor {
         console.log(`Marked redemption ${redemption.id} as credited for user ${userAddress}`);
       }
     }
+
+    // Update user's creditsAvailable - credits are assigned and available for withdrawal
+    let user = await userRepo.findOne({ 
+      where: { addressId: addressRecord.id } 
+    });
+    
+    if (!user) {
+      // Create user if they don't exist
+      user = userRepo.create({
+        addressId: addressRecord.id,
+        stfuelBalance: '0',
+        totalDeposited: '0',
+        totalWithdrawn: '0',
+        totalMinted: '0',
+        totalBurned: '0',
+        totalKeeperFeesEarned: '0',
+        totalReferralFeesEarned: '0',
+        totalEnteringFeesPaid: '0',
+        totalExitFeesPaid: '0',
+        creditsAvailable: '0',
+        firstActivityBlock: event.blockNumber,
+        firstActivityTimestamp: event.timestamp
+      });
+    }
+
+    // Add credits to user's available credits
+    const currentCredits = BigInt(user.creditsAvailable);
+    const newCredits = BigInt(amount);
+    user.creditsAvailable = (currentCredits + newCredits).toString();
+    user.lastActivityBlock = event.blockNumber;
+    user.lastActivityTimestamp = event.timestamp;
+    await userRepo.save(user);
+    
+    console.log(`Updated creditsAvailable for user ${userAddress}: +${amount} (total: ${user.creditsAvailable})`);
   }
 
   private async processKeeperCredited(event: NodeManagerEvent, queryRunner?: QueryRunner): Promise<void> {
@@ -385,17 +420,39 @@ export class NormalizedEventProcessor {
     const manager = queryRunner ? queryRunner.manager : AppDataSource.manager;
     const userRepo = manager.getRepository(User);
 
-    // Also update user if keeper is a user
-    const user = await userRepo.findOne({ 
+    // Get or create user for the keeper
+    let user = await userRepo.findOne({ 
       where: { addressId: addressRecord.id } 
     });
     
-    if (user) {
-      const currentTotal = BigInt(user.totalKeeperFeesEarned);
-      const newAmount = BigInt(tipPaid);
-      user.totalKeeperFeesEarned = (currentTotal + newAmount).toString();
-      await userRepo.save(user);
+    if (!user) {
+      // Create user if they don't exist
+      user = userRepo.create({
+        addressId: addressRecord.id,
+        stfuelBalance: '0',
+        totalDeposited: '0',
+        totalWithdrawn: '0',
+        totalMinted: '0',
+        totalBurned: '0',
+        totalKeeperFeesEarned: '0',
+        totalReferralFeesEarned: '0',
+        totalEnteringFeesPaid: '0',
+        totalExitFeesPaid: '0',
+        creditsAvailable: '0',
+        firstActivityBlock: event.blockNumber,
+        firstActivityTimestamp: event.timestamp
+      });
     }
+
+    // Update keeper fees earned
+    const currentTotal = BigInt(user.totalKeeperFeesEarned);
+    const newAmount = BigInt(tipPaid);
+    user.totalKeeperFeesEarned = (currentTotal + newAmount).toString();
+    user.lastActivityBlock = event.blockNumber;
+    user.lastActivityTimestamp = event.timestamp;
+    await userRepo.save(user);
+    
+    console.log(`Updated totalKeeperFeesEarned for keeper ${keeperAddress}: +${tipPaid} (total: ${user.totalKeeperFeesEarned})`);
   }
 
   // sTFuel Event Handlers

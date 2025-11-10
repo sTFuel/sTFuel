@@ -297,8 +297,10 @@ export class EventProcessor {
                     ['uint256', 'uint256'],
                     log.data
                   );
-                  result.queueIndex = data[0].toString();
-                  result.amount = data[1].toString();
+                  // According to ABI: CreditAssigned(address user, uint256 amount, uint256 index)
+                  // amount is first in data, index is second
+                  result.amount = data[0].toString();
+                  result.queueIndex = data[1].toString();
                 } catch (e) {
                   console.warn('Failed to parse CreditAssigned data:', e);
                 }
