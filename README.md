@@ -289,3 +289,10 @@ npm start:backend        # Start backend production server
                        └──────────────────┘
 ```
 
+
+
+# Todos:
+### Backend
+-[ ] Check how BurnQueued Event is processesd -> we updated the event output calculation -> might need an update for the processing
+
+### Frontend
