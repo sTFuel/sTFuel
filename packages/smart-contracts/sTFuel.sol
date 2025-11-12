@@ -37,7 +37,8 @@ interface INodeManager {
     function getNetAssetsBackingSharesSafe() external view returns (uint256 netAssets, bool isExact);
     function getTotalTFuelManaged() external view returns (uint256 totalManaged);
     function canDirectRedeem(uint256 amount) external view returns (bool canRedeem, uint256 availableLiquidity);
-    function directRedeem(address user, uint256 amount) external;
+    function directRedeem(address user, uint256 amount, uint256 fee) external;
+    function userTFuelCredits(address user) external view returns (uint256);
 }
 
 interface ITNT721 {
@@ -306,7 +307,7 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
         uint256 tfuelAmount = _tfuelForShares(amount); // snapshot at burn time
         super.burn(amount);
         (uint256 index, uint256 readyAt, uint256 tip) = nodeManager.requestWithdrawal(msg.sender, tfuelAmount);
-        emit BurnQueued(msg.sender, amount, tfuelAmount, readyAt, tip, index);
+        emit BurnQueued(msg.sender, amount, tfuelAmount - tip, readyAt, tip, index); // tfuelAmount - tip is the net amount that user will receive
     }
 
     /**
@@ -322,7 +323,7 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
         uint256 tfuelAmount = _tfuelForShares(amount);
         super.burnFrom(account, amount);
         (uint256 index, uint256 readyAt, uint256 tip) = nodeManager.requestWithdrawal(account, tfuelAmount);
-        emit BurnQueued(account, amount, tfuelAmount, readyAt, tip, index);
+        emit BurnQueued(account, amount, tfuelAmount - tip, readyAt, tip, index);
     }
 
     /**
@@ -349,7 +350,7 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
         
         super.burn(amount);
         
-        nodeManager.directRedeem(msg.sender, netTfuelAmount);
+        nodeManager.directRedeem(msg.sender, netTfuelAmount, directRedeemFee);
         
         emit BurnAndDirectRedeemed(msg.sender, amount, netTfuelAmount, directRedeemFee);
     }
@@ -427,6 +428,15 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
      */
     function totalAssetsTFuel() external view returns (uint256) {
         return nodeManager.getNetAssetsBackingShares();
+    }
+
+    /**
+     * @notice Returns user credits amount
+     * @param user Address of the user
+     * @return credits Amount of credits
+     */
+    function userCredits(address user) external view returns (uint256) {
+        return nodeManager.userTFuelCredits(user);
     }
 
     // =============================================================================
