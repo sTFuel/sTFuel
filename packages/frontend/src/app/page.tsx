@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useQuery } from '@apollo/client/react';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -10,7 +10,7 @@ import StatsCard from '@/components/StatsCard';
 import TransactionConfirmationModal from '@/components/TransactionConfirmationModal';
 import { formatTFuel, formatNumber, calculateExchangeRate, parseTFuel } from '@/lib/formatters';
 
-export default function Home() {
+function HomeContent() {
   const searchParams = useSearchParams();
   const { user } = useAuth();
   const { 
@@ -284,5 +284,26 @@ export default function Home() {
         />
       )}
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={
+      <div className="flex flex-col gap-12">
+        <section className="text-center">
+          <div className="flex flex-col items-center gap-4">
+            <h1 className="text-white text-4xl font-black leading-tight tracking-tighter md:text-5xl">
+              The Liquid Staking Solution for <span className="text-tfuel-color">TFuel</span>
+            </h1>
+            <h2 className="text-text-secondary-dark text-base font-normal leading-normal max-w-2xl md:text-lg text-gray-color">
+              Loading...
+            </h2>
+          </div>
+        </section>
+      </div>
+    }>
+      <HomeContent />
+    </Suspense>
   );
 }

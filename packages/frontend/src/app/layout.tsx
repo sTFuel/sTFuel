@@ -5,7 +5,10 @@ import Footer from '@/components/Footer';
 import FloatingActionButton from '@/components/FloatingActionButton';
 import "./globals.css";
 
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://stfuel.com';
+
 export const metadata: Metadata = {
+  metadataBase: new URL(siteUrl),
   title: "sTFuel - Liquid Staking for TFuel",
   description: "The Liquid Staking Solution for TFuel. Instantly mint sTFuel by staking your TFuel, earning rewards while maintaining liquidity in the Theta ecosystem.",
   manifest: "/site.webmanifest",
