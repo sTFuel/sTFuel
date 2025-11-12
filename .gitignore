@@ -126,7 +126,6 @@ packages/frontend/out/
 packages/frontend/.nuxt/
 packages/frontend/.vuepress/dist/
 packages/frontend/.cache/
-packages/frontend/public/
 packages/frontend/.env
 packages/frontend/.env.local
 packages/frontend/.env.development.local

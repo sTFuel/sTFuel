@@ -5,7 +5,6 @@ const nextConfig: NextConfig = {
   images: {
     unoptimized: true,
   },
-  trailingSlash: false,
   webpack: (config) => {
     config.resolve.fallback = {
       ...config.resolve.fallback,
