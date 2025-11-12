@@ -5,7 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon --exec ts-node src/index.ts",
-    "build": "tsc",
+    "build": "tsc && mkdir -p dist/graphql && cp src/graphql/schema.graphql dist/graphql/schema.graphql",
     "start": "node dist/index.js",
     "migration:generate": "typeorm-ts-node-commonjs migration:generate -d src/database/data-source.ts",
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/database/data-source.ts",
