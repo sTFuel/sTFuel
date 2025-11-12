@@ -448,11 +448,17 @@ export class NormalizedEventProcessor {
     const currentTotal = BigInt(user.totalKeeperFeesEarned);
     const newAmount = BigInt(tipPaid);
     user.totalKeeperFeesEarned = (currentTotal + newAmount).toString();
+    
+    // Also add to creditsAvailable since keeper fees are credited as TFuel credits
+    const currentCredits = BigInt(user.creditsAvailable);
+    user.creditsAvailable = (currentCredits + newAmount).toString();
+    
     user.lastActivityBlock = event.blockNumber;
     user.lastActivityTimestamp = event.timestamp;
     await userRepo.save(user);
     
     console.log(`Updated totalKeeperFeesEarned for keeper ${keeperAddress}: +${tipPaid} (total: ${user.totalKeeperFeesEarned})`);
+    console.log(`Updated creditsAvailable for keeper ${keeperAddress}: +${tipPaid} (total: ${user.creditsAvailable})`);
   }
 
   // sTFuel Event Handlers

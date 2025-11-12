@@ -404,6 +404,18 @@ export class SnapshotService {
         }
       }
 
+      // Safeguard: Ensure total supply never goes below 0
+      if (totalSupply < BigInt(0)) {
+        console.error(`⚠️  WARNING: Calculated negative sTFuel total supply at block ${blockNumber}: ${totalSupply.toString()}`);
+        console.error(`   This should not be possible. Possible causes:`);
+        console.error(`   - Data inconsistency in events`);
+        console.error(`   - Double counting of burn events`);
+        console.error(`   - Missing mint events`);
+        console.error(`   - Event processing order issues`);
+        console.error(`   Returning 0 instead of negative value to prevent invalid snapshot data.`);
+        return BigInt(0);
+      }
+
       return totalSupply;
     } catch (error) {
       console.error('Error calculating sTFuel total supply:', error);
