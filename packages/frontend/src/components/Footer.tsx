@@ -13,7 +13,7 @@ const Footer = () => {
           <a className="hover:text-white transition-colors" href="/privacy-policy">
             Privacy
           </a>
-          <a className="hover:text-white transition-colors" href="https://x.com/sTFuel" target="_blank" rel="noopener noreferrer">
+          <a className="hover:text-white transition-colors" href="https://x.com/smartTFuel" target="_blank" rel="noopener noreferrer">
             Twitter
           </a>
           <a className="hover:text-white transition-colors" href="https://discord.gg/ydnAHjJppw" target="_blank" rel="noopener noreferrer">
