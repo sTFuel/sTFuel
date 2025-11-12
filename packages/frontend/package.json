@@ -1,0 +1,35 @@
+{
+  "name": "frontend",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@apollo/client": "^4.0.7",
+    "@reown/appkit": "^1.8.12",
+    "@reown/appkit-adapter-ethers": "^1.8.12",
+    "@reown/appkit-wallet-button": "^1.8.12",
+    "ethers": "^6.15.0",
+    "graphql": "^16.11.0",
+    "magic-sdk": "^31.0.0",
+    "next": "16.0.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-hot-toast": "^2.6.0",
+    "recharts": "^3.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "eslint": "^9",
+    "eslint-config-next": "16.0.0",
+    "tailwindcss": "^4",
+    "typescript": "^5"
+  }
+}
