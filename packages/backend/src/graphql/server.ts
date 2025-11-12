@@ -1,17 +1,22 @@
 import { ApolloServer } from '@apollo/server';
-import { startStandaloneServer } from '@apollo/server/standalone';
+import { expressMiddleware } from '@apollo/server/express4';
 import { readFileSync } from 'fs';
 import { join } from 'path';
+import express from 'express';
+import cors from 'cors';
+import { Server } from 'http';
 import { resolvers } from './resolvers';
 import { config } from '../config/environment';
-import { GraphQLScalarType } from 'graphql';
 
 export class GraphQLServer {
   private server: ApolloServer;
+  private app: express.Application;
+  private httpServer: Server | null = null;
   private port: number;
 
   constructor() {
     this.port = config.port;
+    this.app = express();
     
     // Read GraphQL schema
     const typeDefs = readFileSync(join(__dirname, 'schema.graphql'), 'utf8');
@@ -25,12 +30,47 @@ export class GraphQLServer {
 
   async start(): Promise<void> {
     try {
-      const { url } = await startStandaloneServer(this.server, {
-        listen: { port: this.port },
+      await this.server.start();
+
+      // Configure CORS to allow requests from frontend
+      const allowedOrigins = [
+        'http://localhost:3000',
+        'http://localhost:3001',
+        'https://stfuel.com',
+        'http://stfuel.com',
+        'https://www.stfuel.com',
+        'http://www.stfuel.com',
+      ];
+
+      this.app.use(
+        '/graphql',
+        cors({
+          origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
+            // Allow requests with no origin (like mobile apps or curl requests)
+            if (!origin) return callback(null, true);
+            
+            if (allowedOrigins.indexOf(origin) !== -1) {
+              callback(null, true);
+            } else {
+              callback(new Error('Not allowed by CORS'));
+            }
+          },
+          credentials: true,
+        }),
+        express.json(),
+        expressMiddleware(this.server, {
+          context: async ({ req }) => {
+            return { req };
+          },
+        })
+      );
+
+      // Start the Express server
+      this.httpServer = this.app.listen(this.port, () => {
+        const url = `http://localhost:${this.port}`;
+        console.log(`🚀 GraphQL Server ready at ${url}/graphql`);
+        console.log(`📊 GraphQL Playground available at ${url}/graphql`);
       });
-      
-      console.log(`🚀 GraphQL Server ready at ${url}`);
-      console.log(`📊 GraphQL Playground available at ${url}`);
     } catch (error) {
       console.error('Error starting GraphQL server:', error);
       throw error;
@@ -39,6 +79,15 @@ export class GraphQLServer {
 
   async stop(): Promise<void> {
     try {
+      const server = this.httpServer;
+      if (server) {
+        await new Promise<void>((resolve) => {
+          server.close(() => {
+            console.log('HTTP server closed');
+            resolve();
+          });
+        });
+      }
       await this.server.stop();
       console.log('GraphQL Server stopped');
     } catch (error) {
