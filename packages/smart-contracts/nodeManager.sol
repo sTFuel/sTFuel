@@ -75,11 +75,8 @@ contract NodeManager is AccessControl, ReentrancyGuard {
     // =============================================================================
     // CONFIGURABLE PARAMETERS
     // =============================================================================
-
-    /// @notice Withdrawal fee in basis points (50 = 0.5%)
-    uint16 public withdrawFeeBps = 50;
     
-    /// @notice Keeper tip percentage in basis points (5 = 0.05%)
+    /// @notice Keeper tip percentage (= withdrawal fee) in basis points (5 = 0.05%)
     uint16 public keeperTipBps = 5;
     
     /// @notice Maximum keeper tip per call (50 TFuel)
@@ -228,7 +225,7 @@ contract NodeManager is AccessControl, ReentrancyGuard {
     event KeeperCredited(address indexed keeper, uint256 tipPaid, uint256 tipTotalProcessed); // update -> needs also update in backend code tipPaid -> tipCredited
     event TFuelStaked(address indexed node, uint256 amount);
     event TFuelUnstaked(address indexed node, uint256 amount);
-    event ParamsUpdated(uint16 withdrawFeeBps, uint16 keeperTipBps, uint256 keeperTipMax);
+    event ParamsUpdated(uint16 keeperTipBps, uint256 keeperTipMax);
     event StakingPauseChanged(bool paused);
     event MaxNodesPerStakingCallUpdated(uint16 maxNodes);
     event TNT20Withdrawn(address indexed to, address indexed token, uint256 amount);
@@ -237,7 +234,7 @@ contract NodeManager is AccessControl, ReentrancyGuard {
     event FaultyNodeRecovered(address indexed node, uint256 amount);
     event KeeperTipSurplus(uint256 amount);
     event CurrentNetAssets(uint256 netAssets, bool isExact);
-
+    event FeeSplit(uint256 userPayout, address indexed userAddress, uint256 feePayout, address indexed feeAddress);
     // =============================================================================
     // MODIFIERS
     // =============================================================================
@@ -280,22 +277,18 @@ contract NodeManager is AccessControl, ReentrancyGuard {
 
     /**
      * @notice Sets contract parameters
-     * @param _withdrawFeeBps Withdrawal fee in basis points (max 1000 = 10%)
      * @param _keeperTipBps Keeper tip percentage in basis points (max 100 = 1%)
      * @param _keeperTipMax Maximum keeper tip per call
      * @dev Only callable by MANAGER_ROLE
      */
     function setParams(
-        uint16 _withdrawFeeBps,
         uint16 _keeperTipBps,
         uint256 _keeperTipMax
     ) external onlyRole(MANAGER_ROLE) {
-        require(_withdrawFeeBps <= 1000, "WITHDRAW_FEE_TOO_HIGH"); // <=10%
         require(_keeperTipBps <= 100, "TIP_TOO_HIGH");          // <=1%
-        withdrawFeeBps = _withdrawFeeBps;
         keeperTipBps = _keeperTipBps;
         keeperTipMax = _keeperTipMax;
-        emit ParamsUpdated(_withdrawFeeBps, _keeperTipBps, _keeperTipMax);
+        emit ParamsUpdated(_keeperTipBps, _keeperTipMax);
     }
 
     /**
@@ -484,8 +477,7 @@ contract NodeManager is AccessControl, ReentrancyGuard {
         // We only track the *tip* here.
         uint256 tip = (amount * keeperTipBps) / 10_000;
         if (tip > keeperTipMax) tip = keeperTipMax; // item-level cap
-
-        uint256 net = amount - ((amount * withdrawFeeBps) / 10_000); // purely informative for aum calc; fee not stored here
+        uint256 net = amount - tip; // calculated net amount that user will receive
 
         // Track pending user redemptions (net) to avoid staking what is about to exit
         totalTFuelUserRequestedToRedeem += net;
@@ -547,16 +539,20 @@ contract NodeManager is AccessControl, ReentrancyGuard {
         (uint256 netAssets, bool isExact) = _getNetAssetsBackingSharesSafe();
         emit CurrentNetAssets(netAssets, isExact);
 
+        // FeeSplit Event -> It shows in the explorer
+        emit FeeSplit(r.amount, r.user, r.keeperTip, address(this));
+
         return (true, r.amount, wqHead - 1);
     }
 
     /**
      * @notice Direct redeem for user
      * @param user Address of the user
-     * @param amount Amount to redeem
+     * @param amount Amount to redeem in TFuel
+     * @param fee Fee amount in TFuel
      * @dev Only callable by sTFuel contract
      */
-    function directRedeem(address user, uint256 amount) external onlySTFuel nonReentrant {
+    function directRedeem(address user, uint256 amount, uint256 fee) external onlySTFuel nonReentrant {
         require(address(this).balance >= (amount + getTotalTFuelReserved()), "INSUFFICIENT_BALANCE");
         _updateUnstakingNodes(_uLength());
         _pay(user, amount);
@@ -565,6 +561,9 @@ contract NodeManager is AccessControl, ReentrancyGuard {
         // Emit current net assets backing shares after payout
         (uint256 netAssets, bool isExact) = _getNetAssetsBackingSharesSafe();
         emit CurrentNetAssets(netAssets, isExact);
+
+        // FeeSplit Event -> It shows in the explorer
+        emit FeeSplit(amount, user, fee, address(this));
     }
 
     /**
@@ -591,6 +590,9 @@ contract NodeManager is AccessControl, ReentrancyGuard {
         // Emit current net assets backing shares after payout
         (uint256 netAssets, bool isExact) = _getNetAssetsBackingSharesSafe();
         emit CurrentNetAssets(netAssets, isExact);
+
+        // FeeSplit Event -> It shows in the explorer
+        emit FeeSplit(amount, to, 0, address(this));
     }
 
     // =============================================================================
@@ -1449,7 +1451,10 @@ contract NodeManager is AccessControl, ReentrancyGuard {
         uint256 amount
     ) internal virtual returns (bool) {
         bytes memory data = abi.encodePacked(eenSummary, amount);
+        uint256 balanceBefore = address(this).balance;
         (bool success, ) = address(0xce).call(data);
+        // Verify post-call balance change is within expected bounds
+        require(balanceBefore - address(this).balance <= amount, "TFUEL_DRAIN_TOO_HIGH");
         return success;
     }
 
