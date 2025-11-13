@@ -32,21 +32,20 @@ export class GraphQLServer {
     try {
       await this.server.start();
 
-      // Configure CORS to allow requests from frontend
-      // Supports both production (stfuel.com) and localhost for development
-      const allowedOrigins = [
-        'http://localhost:3000',
-        'http://localhost:3001',
-        'https://stfuel.com',
-        'http://stfuel.com',
-        'https://www.stfuel.com',
-        'http://www.stfuel.com',
-      ];
-
+      // CORS configuration for both production (behind nginx) and local development
+      // In production, nginx also adds CORS headers, but having both is safe as long as they match
+      
       this.app.use(
         '/graphql',
         cors({
-          origin: allowedOrigins,
+          origin: [
+            'http://localhost:3000',
+            'http://localhost:3001',
+            'https://stfuel.com',
+            'http://stfuel.com',
+            'https://www.stfuel.com',
+            'http://www.stfuel.com',
+          ],
           credentials: true,
           methods: ['GET', 'POST', 'OPTIONS'],
           allowedHeaders: ['Content-Type', 'Authorization'],
