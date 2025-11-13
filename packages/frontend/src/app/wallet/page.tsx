@@ -4,9 +4,10 @@ import { useQuery } from '@apollo/client/react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useContract } from '@/hooks/useContract';
 import { GET_USER, GET_REDEMPTION_QUEUE } from '@/graphql/queries';
-import { formatTFuel, formatAddress, formatDate, formatNumber } from '@/lib/formatters';
+import { formatTFuel, formatTFuelBigInt, formatAddress, formatDate, formatNumber } from '@/lib/formatters';
 import { parseTFuel } from '@/lib/formatters';
 import TransactionConfirmationModal from '@/components/TransactionConfirmationModal';
+import {ethers} from 'ethers';
 
 export default function Wallet() {
   const { user } = useAuth();
@@ -129,7 +130,7 @@ export default function Wallet() {
           setDirectRedeemFee(Number(feeBps));
         }
         if (pps) {
-          setPPS(Number(pps));
+          setPPS(parseFloat(ethers.formatUnits(pps, 18)));
         }
         if (tipBps) {
           setKeeperTipBps(Number(tipBps));
@@ -161,7 +162,7 @@ export default function Wallet() {
       const result = await canDirectRedeem('1');
       if (result && result.length >= 2) {
         let [canRedeem, maxAmount] = result;
-        maxAmount = BigInt(maxAmount) * BigInt(10_000) / BigInt(20_000 - 200);
+        maxAmount = BigInt(maxAmount) * BigInt(10_000-200) / BigInt(10_000);
         setMaxDirectRedeemAmount(maxAmount.toString());
       } else {
         setMaxDirectRedeemAmount('0');
@@ -254,12 +255,12 @@ export default function Wallet() {
     }
 
     const amountFloat = parseFloat(amount);
-    const balanceFloat = parseFloat(formatTFuel(blockchainBalance));
+    const balanceFloat = parseFloat(formatTFuelBigInt(blockchainBalance));
 
     if (amountFloat > balanceFloat) {
       return { 
         isValid: false, 
-        error: `Insufficient balance. You have ${formatTFuel(blockchainBalance)} sTFuel` 
+        error: `Insufficient balance. You have ${formatTFuelBigInt(blockchainBalance)} sTFuel` 
       };
     }
 
@@ -293,11 +294,11 @@ export default function Wallet() {
   };
 
   const handleMaxNormalRedeem = () => {
-    setNormalRedeemAmount(formatTFuel(blockchainBalance));
+    setNormalRedeemAmount(formatTFuelBigInt(blockchainBalance));
   };
 
   const handleMaxDirectRedeem = () => {
-    const maxAmount = formatTFuel(maxDirectRedeemAmount);
+    const maxAmount = formatTFuelBigInt(maxDirectRedeemAmount);
     setDirectRedeemAmount(maxAmount);
   };
 
@@ -361,33 +362,34 @@ export default function Wallet() {
   const calculateDirectRedeemOutput = (amount: string) => {
     if (!amount || parseFloat(amount) <= 0) return '0';
     const netAmount = parseFloat(amount) * (1 - directRedeemFee / 10000);
-    const outputAmount = netAmount * parseFloat(formatTFuel(pps.toString()));
+    const outputAmount = netAmount * pps;
     return outputAmount.toString();
   };
 
   const calculateNormalRedeemFee = (amount: string) => {
     if (!amount || parseFloat(amount) <= 0) return '0';
-    const tfuelAmount = parseFloat(amount) * parseFloat(formatTFuel(pps.toString()));
+    const tfuelAmount = parseFloat(amount) * pps;
     // Calculate fee (keeper tip)
     let fee = (tfuelAmount * keeperTipBps) / 10000;
     // Cap at keeperTipMax if set
     if (keeperTipMax && parseFloat(keeperTipMax) > 0) {
-      const maxTip = parseFloat(formatTFuel(keeperTipMax));
+      const maxTip = parseFloat(keeperTipMax);
       if (fee > maxTip) fee = maxTip;
     }
-    const stfuelFee = fee / parseFloat(formatTFuel(pps.toString()));
+    const stfuelFee = fee / pps;
+    console.log('stfuelFee', stfuelFee);
     return stfuelFee.toString();
   };
 
   const calculateNormalRedeemOutput = (amount: string) => {
     if (!amount || parseFloat(amount) <= 0) return '0';
     // Convert sTFuel to TFuel
-    const tfuelAmount = parseFloat(amount) * parseFloat(formatTFuel(pps.toString()));
+    const tfuelAmount = parseFloat(amount) * pps;
     // Calculate fee
     let fee = (tfuelAmount * keeperTipBps) / 10000;
     // Cap at keeperTipMax if set
     if (keeperTipMax && parseFloat(keeperTipMax) > 0) {
-      const maxTip = parseFloat(formatTFuel(keeperTipMax));
+      const maxTip = parseFloat(keeperTipMax);
       if (fee > maxTip) fee = maxTip;
     }
     // Net amount user receives
@@ -432,7 +434,7 @@ export default function Wallet() {
                 Loading...
               </div>
             ) : (
-              formatNumber(parseFloat(formatTFuel(blockchainBalance)))
+              formatNumber(parseFloat(formatTFuelBigInt(blockchainBalance)))
             )}
           </div>
           <p className="text-sm text-text-secondary-dark mt-2">
@@ -449,7 +451,7 @@ export default function Wallet() {
                 Loading...
               </div>
             ) : userInfo ? (
-              formatNumber(parseFloat(formatTFuel(userInfo.totalDeposited)))
+              formatNumber(parseFloat(formatTFuelBigInt(userInfo.totalDeposited)))
             ) : (
               '0'
             )}
@@ -468,7 +470,7 @@ export default function Wallet() {
                 Loading...
               </div>
             ) : userInfo ? (
-              formatNumber(parseFloat(formatTFuel(userInfo.totalWithdrawn)))
+              formatNumber(parseFloat(formatTFuelBigInt(userInfo.totalWithdrawn)))
             ) : (
               '0'
             )}
@@ -487,7 +489,7 @@ export default function Wallet() {
                 Loading...
               </div>
             ) : userInfo ? (
-              formatNumber(parseFloat(formatTFuel(userInfo.totalMinted)))
+              formatNumber(parseFloat(formatTFuelBigInt(userInfo.totalMinted)))
             ) : (
               '0'
             )}
@@ -506,7 +508,7 @@ export default function Wallet() {
                 Loading...
               </div>
             ) : userInfo ? (
-              formatNumber(parseFloat(formatTFuel(userInfo.totalBurned)))
+              formatNumber(parseFloat(formatTFuelBigInt(userInfo.totalBurned)))
             ) : (
               '0'
             )}
@@ -525,7 +527,7 @@ export default function Wallet() {
                 Loading...
               </div>
             ) : userInfo ? (
-              formatNumber(parseFloat(formatTFuel(userInfo.totalKeeperFeesEarned)))
+              formatNumber(parseFloat(formatTFuelBigInt(userInfo.totalKeeperFeesEarned)))
             ) : (
               '0'
             )}
@@ -544,7 +546,7 @@ export default function Wallet() {
                 Loading...
               </div>
             ) : userInfo ? (
-              formatNumber(parseFloat(formatTFuel(userInfo.totalReferralFeesEarned)))
+              formatNumber(parseFloat(formatTFuelBigInt(userInfo.totalReferralFeesEarned)))
             ) : (
               '0'
             )}
@@ -563,7 +565,7 @@ export default function Wallet() {
                 Loading...
               </div>
             ) : userInfo ? (
-              formatNumber(parseFloat(formatTFuel((BigInt(userInfo.totalEnteringFeesPaid || '0') + BigInt(userInfo.totalExitFeesPaid || '0')).toString())))
+              formatNumber(parseFloat(formatTFuelBigInt((BigInt(userInfo.totalEnteringFeesPaid || '0') + BigInt(userInfo.totalExitFeesPaid || '0')).toString())))
             ) : (
               '0'
             )}
@@ -582,7 +584,7 @@ export default function Wallet() {
                 Loading...
               </div>
             ) : userInfo ? (
-              formatNumber(parseFloat(formatTFuel(userInfo.creditsAvailable)))
+              formatNumber(parseFloat(formatTFuelBigInt(userInfo.creditsAvailable)))
             ) : (
               '0'
             )}
@@ -630,7 +632,7 @@ export default function Wallet() {
               disabled={claimLoading || contractLoading}
               className="bg-theta text-white py-2 px-4 rounded-lg font-medium button-tfuel-color-outline transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap hover:cursor-pointer"
             >
-              {claimLoading ? 'Claiming...' : `Claim Credits (${formatNumber(parseFloat(formatTFuel(userInfo.creditsAvailable)))} TFuel)`}
+              {claimLoading ? 'Claiming...' : `Claim Credits (${formatNumber(parseFloat(formatTFuelBigInt(userInfo.creditsAvailable)))} TFuel)`}
             </button>
           )}
         </div>
@@ -675,10 +677,10 @@ export default function Wallet() {
                   {redemptionQueue.map((item: any) => (
                     <tr key={item.id} className="hover:bg-background-dark/50">
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                        { formatNumber(parseFloat(formatTFuel(item.stfuelAmountBurned))) }
+                        { formatNumber(parseFloat(formatTFuelBigInt(item.stfuelAmountBurned))) }
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                        { formatNumber(parseFloat(formatTFuel(item.tfuelAmountExpected))) }
+                        { formatNumber(parseFloat(formatTFuelBigInt(item.tfuelAmountExpected))) }
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-dark">
                         {formatDate(item.requestTimestamp)}
@@ -849,7 +851,7 @@ export default function Wallet() {
       <section>
         <h2 className="text-2xl font-bold text-white mb-6">Redeem sTFuel</h2>
         <span className="text-text-secondary-dark text-sm">
-          The current Price Per Share (sTFuel/TFuel) is {formatTFuel(pps.toString())} TFuel.
+          The current Price Per Share (sTFuel/TFuel) is {pps.toFixed(6)} TFuel.
         </span>
         <span className="text-text-secondary-dark text-sm">
           Important: Keep in mind that the TFuel send by the contract to your wallet does not show in the 
@@ -904,7 +906,7 @@ export default function Wallet() {
                   </div>
                   <div className="flex justify-between font-semibold">
                     <span className="text-text-secondary-dark">You will receive</span>
-                    <span className="text-white">{formatNumber(calculateNormalRedeemOutput(normalRedeemAmount))} TFuel</span>
+                    <span className="text-white">{formatTFuel(calculateNormalRedeemOutput(normalRedeemAmount))} TFuel</span>
                   </div>
                 </div>
               )}
@@ -923,7 +925,7 @@ export default function Wallet() {
           <div className="bg-card-dark border border-border-dark/50 rounded-xl p-6">
             <h3 className="text-lg font-semibold text-white mb-4">Direct Redeem</h3>
             <p className="text-text-secondary-dark text-sm mb-4">
-              Get TFuel immediately with a higher fee ({directRedeemFee / 100}%). Currently {formatTFuel(maxDirectRedeemAmount)} sTFuel can be directly redeemed.
+              Get TFuel immediately with a higher fee ({directRedeemFee / 100}%). Currently {formatTFuelBigInt(maxDirectRedeemAmount)} sTFuel can be directly redeemed.
             </p>
             {parseFloat(maxDirectRedeemAmount) === 0 && (
               <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 mb-4">
@@ -976,7 +978,7 @@ export default function Wallet() {
                   </div>
                   <div className="flex justify-between font-semibold">
                     <span className="text-text-secondary-dark">You will receive</span>
-                    <span className="text-white">{formatTFuel(calculateDirectRedeemOutput(directRedeemAmount))} TFuel</span>
+                    <span className="text-white">{formatTFuel(calculateDirectRedeemOutput(directRedeemAmount), 18)} TFuel</span>
                   </div>
                 </div>
               )}

@@ -8,7 +8,7 @@ import { useAPR } from '@/hooks/useAPR';
 import { useBlockchainData } from '@/hooks/useBlockchainData';
 import StatsCard from '@/components/StatsCard';
 import TransactionConfirmationModal from '@/components/TransactionConfirmationModal';
-import { formatTFuel, formatNumber, calculateExchangeRate, parseTFuel } from '@/lib/formatters';
+import { formatTFuel, formatTFuelBigInt, formatNumber, calculateExchangeRate, parseTFuel } from '@/lib/formatters';
 
 function HomeContent() {
   const searchParams = useSearchParams();
@@ -101,7 +101,7 @@ function HomeContent() {
     if (!tfuelAmount || parseFloat(tfuelAmount) <= 0) return '0';
     const amount = parseFloat(tfuelAmount);
     const fee = (amount * mintFeeBps) / 10000;
-    return formatTFuel(fee.toString(), 0);
+    return formatNumber(formatTFuel(fee, 0));
   };
 
   const calculateStfuelOutput = () => {
@@ -110,7 +110,7 @@ function HomeContent() {
     const fee = (amount * mintFeeBps) / 10000;
     const netAmount = amount - fee;
     const stfuelAmount = netAmount / exchangeRate;
-    return formatTFuel(stfuelAmount.toString());
+    return formatTFuel(stfuelAmount);
   };
 
   // Calculate staking percentage
@@ -137,12 +137,12 @@ function HomeContent() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatsCard
             label="Total sTFuel Supply"
-            value={blockchainLoading ? 'Loading...' : formatNumber(parseFloat(formatTFuel(blockchainData.totalSupply)))}
+            value={blockchainLoading ? 'Loading...' : formatNumber(parseFloat(formatTFuelBigInt(blockchainData.totalSupply)))}
             color="white"
           />
           <StatsCard
             label="Total TFuel Backing"
-            value={blockchainLoading ? 'Loading...' : formatNumber(parseFloat(formatTFuel(blockchainData.netAssetsBackingShares)))}
+            value={blockchainLoading ? 'Loading...' : formatNumber(parseFloat(formatTFuelBigInt(blockchainData.netAssetsBackingShares)))}
             color="tfuel"
           />
           <StatsCard

@@ -4,7 +4,6 @@ import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { getStfuelContract, getNodeManagerContract, getReferralNFTContract, contractFunctions, getContractAddresses } from '@/contracts/sTFuelContract';
 import { stfuelContract, nodeManagerContract, referralNFTContract } from '@/lib/blockchainProvider';
-import TransactionConfirmationModal from '@/components/TransactionConfirmationModal';
 import { formatTFuel, getExplorerUrl } from '@/lib/formatters';
 
 export const useContract = () => {

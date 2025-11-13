@@ -3,7 +3,7 @@ import { useState, useRef, useMemo } from 'react';
 import { useQuery } from '@apollo/client/react';
 import { GET_HOURLY_SNAPSHOTS, GET_DAILY_SNAPSHOTS, GET_EDGE_NODES, GET_USERS } from '@/graphql/queries';
 import StatsCard from '@/components/StatsCard';
-import { formatTFuel, formatNumber, formatAddress, formatDate, parseTimestamp } from '@/lib/formatters';
+import { formatTFuel, formatTFuelBigInt, formatNumber, formatAddress, formatDate, parseTimestamp } from '@/lib/formatters';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useAPR } from '@/hooks/useAPR';
 import { useBlockchainData } from '@/hooks/useBlockchainData';
@@ -120,10 +120,10 @@ export default function Stats() {
           localDate: localDate.toISOString(),
           timeValue: timestamp,
           stfuelRate: Number(stfuelRate.toFixed(6)),
-          tfuelBacking: parseFloat(formatTFuel(snapshot.tfuelBackingAmount)),
-          stakedTFuel: parseFloat(formatTFuel(snapshot.tfuelStakedAmount)),
+          tfuelBacking: parseFloat(formatTFuelBigInt(snapshot.tfuelBackingAmount)),
+          stakedTFuel: parseFloat(formatTFuelBigInt(snapshot.tfuelStakedAmount)),
           holdersCount: Number(snapshot.currentHoldersCount) || 0,
-          referralRewards: parseFloat(formatTFuel(snapshot.totalReferralRewards)),
+          referralRewards: parseFloat(formatTFuelBigInt(snapshot.totalReferralRewards)),
           edgeNodesCount: Number(snapshot.edgeNodesCount) || 0,
           hour: localDate.getHours(), // Use local time for deduplication logic
           day: localDate.toISOString().split('T')[0], // YYYY-MM-DD format in local time
@@ -223,13 +223,13 @@ export default function Stats() {
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatsCard
                 label="sTFuel Total Supply"
-                value={blockchainLoading ? 'Loading...' : formatNumber(parseFloat(formatTFuel(blockchainData.totalSupply)))}
+                value={blockchainLoading ? 'Loading...' : formatNumber(parseFloat(formatTFuelBigInt(blockchainData.totalSupply)))}
                 color="theta"
                 subtitle={blockchainLoading ? 'Get real-time data...' : 'Real-time on-chain data'}
             />
             <StatsCard
                 label="Total TFuel Backing"
-                value={blockchainLoading ? 'Loading...' : formatNumber(parseFloat(formatTFuel(blockchainData.netAssetsBackingShares)))}
+                value={blockchainLoading ? 'Loading...' : formatNumber(parseFloat(formatTFuelBigInt(blockchainData.netAssetsBackingShares)))}
                 color="tfuel"
                 subtitle={blockchainLoading ? 'Get real-time data...' : 'Real-time on-chain data'}
             />
@@ -241,7 +241,7 @@ export default function Stats() {
             />
             <StatsCard
                 label="Total TFuel Staked"
-                value={blockchainLoading ? 'Loading...' : formatNumber(parseFloat(formatTFuel(blockchainData.totalStakedTFuel)))}
+                value={blockchainLoading ? 'Loading...' : formatNumber(parseFloat(formatTFuelBigInt(blockchainData.totalStakedTFuel)))}
                 color="tfuel"
                 subtitle={blockchainLoading ? 'Get real-time data...' : 'Real-time on-chain data'}
             />
@@ -536,7 +536,7 @@ export default function Stats() {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                          {formatTFuel(node.totalStaked)}
+                          {formatTFuelBigInt(node.totalStaked)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-dark">
                           {node.nodeType || 'N/A'}
@@ -602,13 +602,13 @@ export default function Stats() {
                           {formatAddress(user.address.address)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                          {formatTFuel(user.stfuelBalance)}
+                          {formatTFuelBigInt(user.stfuelBalance)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-dark">
-                          {formatTFuel(user.totalDeposited)}
+                          {formatTFuelBigInt(user.totalDeposited)}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-dark">
-                          {formatTFuel(user.totalWithdrawn)}
+                          {formatTFuelBigInt(user.totalWithdrawn)}
                         </td>
                       </tr>
                     ))

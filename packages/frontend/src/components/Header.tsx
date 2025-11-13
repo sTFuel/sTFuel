@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
-import { formatAddress, formatTFuel, formatNumber } from '@/lib/formatters';
+import { formatAddress, formatTFuelBigInt, formatNumber } from '@/lib/formatters';
 import { useState, useEffect } from 'react';
 import WalletModal from '@/components/WalletModal';
 import { useContract } from '@/hooks/useContract';
@@ -163,7 +163,7 @@ const Header = () => {
                           className="w-4 h-4"
                         />
                         <span className="text-sm font-medium text-white">
-                          {loadingBalances ? '...' : formatNumber(parseFloat(formatTFuel(balances.tfuel)))}
+                          {loadingBalances ? '...' : formatNumber(parseFloat(formatTFuelBigInt(balances.tfuel)))}
                         </span>
                       </div>
                     </div>
@@ -177,7 +177,7 @@ const Header = () => {
                           className="w-4 h-4"
                         />
                         <span className="text-sm font-medium text-tfuel-color">
-                          {loadingBalances ? '...' : formatNumber(parseFloat(formatTFuel(balances.stfuel)))}
+                          {loadingBalances ? '...' : formatNumber(parseFloat(formatTFuelBigInt(balances.stfuel)))}
                         </span>
                       </div>
                     </div>

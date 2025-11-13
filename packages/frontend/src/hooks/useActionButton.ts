@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useQuery } from '@apollo/client/react';
 import { GET_SYNC_STATUS, GET_REDEMPTION_QUEUE_FOR_KEEPER } from '@/graphql/queries';
 import { useContract } from './useContract';
-import { formatTFuel } from '@/lib/formatters';
+import { formatTFuelBigInt } from '@/lib/formatters';
 
 export type ActionType = 'pokeQueue' | 'stakeTFuel' | 'updateUnstakingNodes' | null;
 
@@ -84,11 +84,11 @@ export const useActionButton = (): ActionButtonData | null => {
           
           setAction({
             type: 'pokeQueue',
-            label: `Update Queue and Earn ${formatTFuel(cappedTipFee.toString())} TFuel`,
+            label: `Update Queue and Earn ${formatTFuelBigInt(cappedTipFee.toString())} TFuel`,
             execute: async () => {
               await pokeQueue(maxItems);
             },
-            tfuelEarned: formatTFuel(cappedTipFee.toString()),
+            tfuelEarned: formatTFuelBigInt(cappedTipFee.toString()),
           });
           setLoading(false);
           return;

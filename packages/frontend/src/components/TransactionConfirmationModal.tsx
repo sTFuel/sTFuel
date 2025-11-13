@@ -1,6 +1,6 @@
 'use client';
 import { useState } from 'react';
-import { formatTFuel } from '@/lib/formatters';
+import { formatTFuel, formatTFuelBigInt } from '@/lib/formatters';
 
 interface TransactionDetails {
   type: 'mint' | 'burn' | 'burnAndRedeemDirect' | 'setReferralIdToAddress' | 'pokeQueue' | 'stakeTFuel' | 'updateUnstakingNodes' | 'claimTFuel';
@@ -158,7 +158,7 @@ const TransactionConfirmationModal = ({
             <div className="bg-background-dark/50 rounded-lg p-4">
               <h3 className="text-sm font-medium text-text-secondary-dark mb-2">You will receive</h3>
               <p className="text-green-400 font-mono font-semibold">
-                {formatTFuel(transactionDetails.outputAmount)} TFuel
+                {formatTFuelBigInt(transactionDetails.outputAmount)} TFuel
               </p>
             </div>
           )}

@@ -1,6 +1,46 @@
 import { ethers } from 'ethers';
 
-export const formatTFuel = (amount: string | bigint | number, decimals: number = 18): string => {
+/**
+ * Formats TFuel from BigInt values (bigint or string representing BigInt).
+ * Always treats input as a BigInt value that needs to be converted using formatUnits.
+ */
+export const formatTFuelBigInt = (amount: string | bigint, decimals: number = 18): string => {
+  console.log('amount (BigInt)', amount);
+  try {
+    let num: number;
+    
+    if (typeof amount === 'bigint') {
+      // If it's a BigInt, convert using formatUnits
+      const formatted = ethers.formatUnits(amount, decimals);
+      num = parseFloat(formatted);
+    } else {
+      // If it's a string, treat it as a BigInt string and convert using formatUnits
+      const formatted = ethers.formatUnits(amount, decimals);
+      num = parseFloat(formatted);
+    }
+    
+    if (num === 0) return '0';
+    if (num < 0.000001) return '< 0.000001';
+    if (num < 0.01) return num.toFixed(6);
+    if (num < 1) return num.toFixed(4);
+    if (num < 100) return num.toFixed(2);
+    if (num < 1000) return num.toFixed(1);
+    if (num < 1000000) return num.toFixed(1);
+    if (num >= 10000000) return num.toFixed(0);
+    
+    return num.toString();
+  } catch (error) {
+    console.error('Error formatting TFuel (BigInt):', error);
+    return '0';
+  }
+};
+
+/**
+ * Formats TFuel from normal numbers (number or string representing a decimal number).
+ * Does NOT treat strings as BigInt values - only handles decimal numbers.
+ */
+export const formatTFuel = (amount: string | number, decimals: number = 18): string => {
+  console.log('amount', amount);
   try {
     let num: number;
     
@@ -8,20 +48,14 @@ export const formatTFuel = (amount: string | bigint | number, decimals: number =
     if (typeof amount === 'number') {
       // If it's already a number, use it directly
       num = amount;
-    } else if (typeof amount === 'bigint') {
-      // If it's a BigInt, convert using formatUnits
-      const formatted = ethers.formatUnits(amount, decimals);
-      num = parseFloat(formatted);
     } else {
-      // If it's a string, check if it's a decimal number or BigInt string
-      if (amount.includes('.')) {
-        // It's a decimal number string
-        num = parseFloat(amount);
-      } else {
-        // It's a BigInt string, convert using formatUnits
-        const formatted = ethers.formatUnits(amount, decimals);
-        num = parseFloat(formatted);
-      }
+      // If it's a string, treat it as a decimal number string
+      num = parseFloat(amount);
+    }
+    
+    if (isNaN(num)) {
+      console.error('Invalid number format:', amount);
+      return '0';
     }
     
     if (num === 0) return '0';
