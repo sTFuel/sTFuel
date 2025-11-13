@@ -33,6 +33,7 @@ export class GraphQLServer {
       await this.server.start();
 
       // Configure CORS to allow requests from frontend
+      // Supports both production (stfuel.com) and localhost for development
       const allowedOrigins = [
         'http://localhost:3000',
         'http://localhost:3001',
@@ -45,17 +46,10 @@ export class GraphQLServer {
       this.app.use(
         '/graphql',
         cors({
-          origin: (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) => {
-            // Allow requests with no origin (like mobile apps or curl requests)
-            if (!origin) return callback(null, true);
-            
-            if (allowedOrigins.indexOf(origin) !== -1) {
-              callback(null, true);
-            } else {
-              callback(new Error('Not allowed by CORS'));
-            }
-          },
+          origin: allowedOrigins,
           credentials: true,
+          methods: ['GET', 'POST', 'OPTIONS'],
+          allowedHeaders: ['Content-Type', 'Authorization'],
         }),
         express.json(),
         expressMiddleware(this.server, {
