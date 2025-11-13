@@ -32,12 +32,16 @@ export class GraphQLServer {
     try {
       await this.server.start();
 
-      // CORS configuration for both production (behind nginx) and local development
-      // In production, nginx also adds CORS headers, but having both is safe as long as they match
+      // CORS handling strategy:
+      // - Production: nginx handles CORS (don't add CORS middleware here to avoid duplicates)
+      // - Development: Express handles CORS (no nginx in front)
+      const isProduction = config.nodeEnv === 'production';
       
-      this.app.use(
-        '/graphql',
-        cors({
+      const middleware: any[] = [express.json()];
+      
+      // Only add CORS middleware in development
+      if (!isProduction) {
+        middleware.unshift(cors({
           origin: [
             'http://localhost:3000',
             'http://localhost:3001',
@@ -49,8 +53,12 @@ export class GraphQLServer {
           credentials: true,
           methods: ['GET', 'POST', 'OPTIONS'],
           allowedHeaders: ['Content-Type', 'Authorization'],
-        }),
-        express.json(),
+        }));
+      }
+      
+      this.app.use(
+        '/graphql',
+        ...middleware,
         expressMiddleware(this.server, {
           context: async ({ req }) => {
             return { req };
