@@ -77,7 +77,7 @@ const Header = () => {
     if (showBalanceDropdown) {
       setShowBalanceDropdown(false);
     } else {
-      await fetchBalances();
+      fetchBalances();
       setShowBalanceDropdown(true);
     }
   };
@@ -152,7 +152,7 @@ const Header = () => {
               
               {/* Balance Dropdown */}
               {showBalanceDropdown && (
-                <div className="absolute top-full left-0 mt-2 w-64 bg-background border border-border-dark/50 rounded-lg shadow-xl z-50 overflow-hidden balance-dropdown-enter">
+                <div className="absolute top-full right-0 md:left-0 md:right-auto mt-2 w-64 bg-background border border-border-dark/50 rounded-lg shadow-xl z-50 overflow-hidden balance-dropdown-enter">
                   <div className="p-4 space-y-3">
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-text-secondary-dark">TFuel:</span>
