@@ -3,6 +3,7 @@ import { ClientProviders } from '@/providers/ClientProviders';
 import Header from '@/components/Header';
 import Footer from '@/components/Footer';
 import FloatingActionButton from '@/components/FloatingActionButton';
+import MobileNavBar from '@/components/MobileNavBar';
 import "./globals.css";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || 'https://stfuel.com';
@@ -67,13 +68,14 @@ export default function RootLayout({
               <div className="w-full max-w-5xl px-4 sm:px-6 lg:px-8">
                 <Header />
               </div>
-              <main className="w-full max-w-5xl flex-1 px-4 py-8 sm:px-6 lg:px-8">
+              <main className="w-full max-w-5xl flex-1 px-4 py-8 pb-20 sm:px-6 lg:px-8 md:pb-8">
                 {children}
               </main>
               <Footer />
             </div>
             <FloatingActionButton />
           </div>
+          <MobileNavBar />
         </ClientProviders>
       </body>
     </html>

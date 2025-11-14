@@ -135,3 +135,15 @@ body {
 .balance-dropdown-exit {
   animation: slideUp 0.2s ease-in;
 }
+
+/* Mobile bottom navigation bar - ensure it stays fixed to viewport */
+@media (max-width: 767px) {
+  html, body {
+    overflow-x: hidden;
+  }
+  
+  /* Ensure fixed positioning works correctly on mobile */
+  body {
+    position: relative;
+  }
+}
