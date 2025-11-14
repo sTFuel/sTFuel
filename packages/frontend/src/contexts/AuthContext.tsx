@@ -148,7 +148,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             const magicInstance = new Magic(magicKey, {
               network: {
                 rpcUrl: process.env.NEXT_PUBLIC_THETA_RPC_URL || 'https://eth-rpc-api.thetatoken.org/rpc',
-                chainId: parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '5'),
+                chainId: parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '361'),
               },
             });
             
@@ -156,7 +156,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
             if (isLoggedIn) {
               console.log('Found existing Magic session');
               const magicProvider = magicInstance.rpcProvider;
-              const provider = new ethers.BrowserProvider(magicProvider as any, 365);
+              const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '361');
+              const provider = new ethers.BrowserProvider(magicProvider as any, chainId);
               const signer = await provider.getSigner();
               const address = await signer.getAddress();
               
@@ -278,7 +279,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
               magicInstance = new Magic(magicKey, {
                 network: {
                   rpcUrl: process.env.NEXT_PUBLIC_THETA_RPC_URL || 'https://eth-rpc-api.thetatoken.org/rpc',
-                  chainId: parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '365'),
+                  chainId: parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '361'),
                 },
               });
         setMagic(magicInstance);
@@ -293,7 +294,8 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       if (accounts && accounts.length > 0) {
               // Get the provider and signer to get the address
               const magicProvider = magicInstance.rpcProvider;
-              const provider = new ethers.BrowserProvider(magicProvider as any, 365);
+              const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '361');
+              const provider = new ethers.BrowserProvider(magicProvider as any, chainId);
               const signer = await provider.getSigner();
         const address = await signer.getAddress();
         
@@ -349,14 +351,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     if (!user?.isConnected) return null;
     
     try {
-      const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '365');
+      const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '361');
       if (magic) {
         // Magic provider
         return new ethers.BrowserProvider(magic.rpcProvider as any, chainId);
       } else {
         // For WalletConnect, create a JSON-RPC provider using the RPC URL
         // This ensures contract calls work properly
-        const rpcUrl = process.env.NEXT_PUBLIC_THETA_RPC_URL || 'https://eth-rpc-api-testnet.thetatoken.org/rpc';
+        const rpcUrl = process.env.NEXT_PUBLIC_THETA_RPC_URL || 'https://eth-rpc-api.thetatoken.org/rpc';
         return new ethers.JsonRpcProvider(rpcUrl, chainId);
       }
     } catch (error) {
@@ -381,7 +383,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         const appkit = (window as any).__REOWN_APPKIT__;
         if (appkit?.getWalletProvider) {
           const walletProvider = appkit.getWalletProvider();
-          const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '365');
+          const chainId = parseInt(process.env.NEXT_PUBLIC_CHAIN_ID || '361');
           const provider = new ethers.BrowserProvider(walletProvider, chainId);
           return await provider.getSigner();
         }

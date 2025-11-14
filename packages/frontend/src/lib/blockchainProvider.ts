@@ -6,7 +6,7 @@ import nodeManagerAbi from '@/contracts/nodeManager.abi.json';
 const STFUEL_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_STFUEL_CONTRACT_ADDRESS || '0x51900b0f79dc8141c02ead7647bc43e8e10406a3';
 const NODE_MANAGER_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_NODE_MANAGER_CONTRACT_ADDRESS || '0xedcc06ab18b9bd5b88af451f1bf86f6cf375d0b9';
 const REFERRAL_NFT_CONTRACT_ADDRESS = process.env.NEXT_PUBLIC_REFERRAL_NFT_CONTRACT_ADDRESS || '';
-const RPC_URL = process.env.NEXT_PUBLIC_THETA_RPC_URL || 'https://eth-rpc-api-testnet.thetatoken.org/rpc';
+const RPC_URL = process.env.NEXT_PUBLIC_THETA_RPC_URL || 'https://eth-rpc-api.thetatoken.org/rpc';
 
 // Create a JSON RPC provider
 const provider = new ethers.JsonRpcProvider(RPC_URL);

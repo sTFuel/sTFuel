@@ -5,6 +5,11 @@ import { theta as thetaNetwork, thetaTestnet as thetaTestnetNetwork } from '@reo
 
 // Initialize at module scope (client-only)
 if (typeof window !== 'undefined' && !(window as any).__REOWN_APPKIT_INITIALIZED__) {
+  // Get chain ID and RPC URL from environment variables, defaulting to mainnet
+  const chainId = process.env.NEXT_PUBLIC_CHAIN_ID || '361';
+  const rpcUrl = process.env.NEXT_PUBLIC_THETA_RPC_URL || 
+    (chainId === '365' ? 'https://eth-rpc-api-testnet.thetatoken.org/rpc' : 'https://eth-rpc-api.thetatoken.org/rpc');
+  
   const appkit = createAppKit({
     adapters: [new EthersAdapter()],
     networks: [thetaNetwork, thetaTestnetNetwork],
@@ -23,10 +28,10 @@ if (typeof window !== 'undefined' && !(window as any).__REOWN_APPKIT_INITIALIZED
     },
     universalProviderConfigOverride: {
       rpcMap: { 
-        'eip155:361': 'https://eth-rpc-api.thetatoken.org/rpc',
-        'eip155:365': 'https://eth-rpc-api-testnet.thetatoken.org/rpc'
+        'eip155:361': chainId === '361' ? rpcUrl : 'https://eth-rpc-api.thetatoken.org/rpc',
+        'eip155:365': chainId === '365' ? rpcUrl : 'https://eth-rpc-api-testnet.thetatoken.org/rpc'
       },
-      defaultChain: 'eip155:' + (process.env.NEXT_PUBLIC_CHAIN_ID || '365'), // Use testnet (365) as default
+      defaultChain: 'eip155:' + chainId, // Use environment variable or default to mainnet (361)
     },
   });
   (window as any).__REOWN_APPKIT__ = appkit;
