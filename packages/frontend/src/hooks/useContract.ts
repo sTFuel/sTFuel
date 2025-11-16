@@ -4,7 +4,7 @@ import toast from 'react-hot-toast';
 import { useAuth } from '@/contexts/AuthContext';
 import { getStfuelContract, getNodeManagerContract, getReferralNFTContract, contractFunctions, getContractAddresses } from '@/contracts/sTFuelContract';
 import { stfuelContract, nodeManagerContract, referralNFTContract } from '@/lib/blockchainProvider';
-import { formatTFuel, getExplorerUrl } from '@/lib/formatters';
+import { formatTFuel, formatTFuelBigInt, getExplorerUrl } from '@/lib/formatters';
 
 export const useContract = () => {
   const { user, getProvider, getSigner, currentChainId, magic } = useAuth();
@@ -75,15 +75,15 @@ export const useContract = () => {
     switch (type) {
       case 'mint':
         if (amount) {
-          return `${formatTFuel(amount)} sTFuel have been minted`;
+          return `${formatTFuelBigInt(amount)} sTFuel have been minted`;
         } else if (tfuelAmount) {
-          return `sTFuel have been minted with ${formatTFuel(tfuelAmount)} TFuel`;
+          return `sTFuel have been minted with ${formatTFuelBigInt(tfuelAmount)} TFuel`;
         }
         return 'sTFuel have been minted';
       case 'burn':
-        return amount ? `${formatTFuel(amount)} sTFuel have been burned` : 'sTFuel have been burned';
+        return amount ? `${formatTFuelBigInt(amount)} sTFuel have been burned` : 'sTFuel have been burned';
       case 'burnAndRedeemDirect':
-        return amount ? `${formatTFuel(amount)} sTFuel have been redeemed directly` : 'sTFuel have been redeemed directly';
+        return amount ? `${formatTFuelBigInt(amount)} sTFuel have been redeemed directly` : 'sTFuel have been redeemed directly';
       case 'setReferralIdToAddress':
         return 'Referral address has been set';
       case 'pokeQueue':

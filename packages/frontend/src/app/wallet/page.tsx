@@ -925,7 +925,7 @@ export default function Wallet() {
           <div className="bg-card-dark border border-border-dark/50 rounded-xl p-6">
             <h3 className="text-lg font-semibold text-white mb-4">Direct Redeem</h3>
             <p className="text-text-secondary-dark text-sm mb-4">
-              Get TFuel immediately with a higher fee ({directRedeemFee / 100}%). Currently {formatTFuelBigInt(maxDirectRedeemAmount)} sTFuel can be directly redeemed.
+              Get TFuel immediately with a higher fee ({directRedeemFee / 100}%). Currently {formatNumber(parseFloat(formatTFuelBigInt(maxDirectRedeemAmount)))} sTFuel can be directly redeemed.
             </p>
             {parseFloat(maxDirectRedeemAmount) === 0 && (
               <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-3 mb-4">
