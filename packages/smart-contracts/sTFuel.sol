@@ -37,7 +37,7 @@ interface INodeManager {
     function getNetAssetsBackingSharesSafe() external view returns (uint256 netAssets, bool isExact);
     function getTotalTFuelManaged() external view returns (uint256 totalManaged);
     function canDirectRedeem(uint256 amount) external view returns (bool canRedeem, uint256 availableLiquidity);
-    function directRedeem(address user, uint256 amount, uint256 fee) external;
+    function directRedeem(address user, uint256 amount) external;
     function userTFuelCredits(address user) external view returns (uint256);
 }
 
@@ -80,8 +80,8 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
     /// @dev Used to verify NFT ownership when setting referral addresses
     address public ReferralNFTAddress;
 
-    event Minted(address indexed user, uint256 tfuelIn, uint256 sharesOut, uint256 feeShares);
-    event BurnQueued(address indexed user, uint256 sharesBurned, uint256 tfuelRequested, uint256 readyAt, uint256 tip, uint256 index);
+    event Minted(address indexed user, uint256 tfuelIn, uint256 sharesOut, uint256 feeTFuel);
+    event BurnQueued(address indexed user, uint256 sharesBurned, uint256 netTFuelOut, uint256 readyAt, uint256 tip, uint256 index);
     event Claimed(address indexed user, uint256 amount, uint256 index);
     event CreditsClaimed(address indexed user, uint256 amount);
     event MintFeeUpdated(uint16 feeBps);
@@ -194,7 +194,7 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
      *      - Increases as fees accumulate (unminted fee shares increase PPS)
      *      - Increases as staking rewards accrue
      */
-    function pps() public view returns (uint256) {
+    function pps() external view returns (uint256) {
         uint256 ts = totalSupply();
         if (ts == 0) return 0.1e18; // bootstrap: 1 TFuel = 10 sTFuel
         uint256 netAssets = nodeManager.getNetAssetsBackingShares();
@@ -205,11 +205,10 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
      * @notice Calculates how many shares to mint for a given TFuel amount
      * @param tfuel Amount of TFuel being deposited
      * @return Number of shares that will be minted
-     * @dev Formula: shares = tfuel / pps
-     * @custom:precision Division may truncate, slightly favoring the protocol
+     * @dev Formula: shares = tfuel / pps.
+     *      Result is always rounded down (truncation), which slightly favors the protocol.
      */
     function _sharesForTFuel(uint256 tfuel) internal view returns (uint256) {
-        // shares = tfuel / pps
         uint256 _pps = pps();
         return (tfuel * ONE) / _pps;
     }
@@ -244,14 +243,16 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
     function mint() external payable whenNotPaused nonReentrant {
         require(msg.value > 0, "NO_TFUEL");
 
-        uint256 sAmount = _sharesForTFuel(msg.value);
-        uint256 feeShares = (sAmount * mintFeeBps) / 10_000;
-        uint256 netShares = sAmount - feeShares; // fee stays un-minted => lifts PPS
+        uint256 feeTFuel = 0;
+        if (totalSupply() > 0) {
+            feeTFuel = (msg.value * mintFeeBps) / 10_000;
+        }
+        uint256 netShares = _sharesForTFuel(msg.value - feeTFuel);
 
-        _mint(msg.sender, netShares);
         nodeManager.depositTFuel{value: msg.value}();
+        _mint(msg.sender, netShares);
 
-        emit Minted(msg.sender, msg.value, netShares, feeShares);
+        emit Minted(msg.sender, msg.value, netShares, feeTFuel);
     }
 
     /**
@@ -268,22 +269,26 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
         require(referrer != msg.sender, "SELF_REFERRAL");
         require(msg.value > 0, "NO_TFUEL");
         
-        uint256 sAmount = _sharesForTFuel(msg.value);
-        uint256 feeShares = (sAmount * mintFeeBps) / 10_000;
-        uint256 netShares = sAmount - feeShares; // fee stays un-minted => lifts PPS
+        uint256 feeTFuel = (msg.value * mintFeeBps) / 10_000;
+        uint256 netShares = _sharesForTFuel(msg.value - feeTFuel);
 
-        _mint(msg.sender, netShares);
         nodeManager.depositTFuel{value: msg.value}();
+        _mint(msg.sender, netShares);
 
-        uint referralReward = feeShares / 5; // 20% of fee shares
-        feeShares -= referralReward;
+        uint referralReward = feeTFuel / 5; // 20% of fee shares
+        uint256 referralShares = _sharesForTFuel(referralReward);
+        unchecked {
+            feeTFuel -= referralReward;
+        }
 
-        emit Minted(msg.sender, msg.value, netShares, feeShares);
+        require(referralShares > 0, "REFERRAL_SHARE_ZERO");
+
+        emit Minted(msg.sender, msg.value, netShares, feeTFuel);
 
         // Mint referral reward to referrer
-        _mint(referrer, referralReward);
+        _mint(referrer, referralShares);
 
-        emit ReferralRewarded(referrer, referralReward, referralId);
+        emit ReferralRewarded(referrer, referralShares, referralId);
     }
 
     // =============================================================================
@@ -305,9 +310,10 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
         require(amount > 0, "ZERO");
         require(balanceOf(msg.sender) >= amount, "INSUFFICIENT_BALANCE");
         uint256 tfuelAmount = _tfuelForShares(amount); // snapshot at burn time
-        super.burn(amount);
         (uint256 index, uint256 readyAt, uint256 tip) = nodeManager.requestWithdrawal(msg.sender, tfuelAmount);
-        emit BurnQueued(msg.sender, amount, tfuelAmount - tip, readyAt, tip, index); // tfuelAmount - tip is the net amount that user will receive
+        super.burn(amount);
+        uint256 netToUser = tfuelAmount - tip;
+        emit BurnQueued(msg.sender, amount, netToUser, readyAt, tip, index);
     }
 
     /**
@@ -320,10 +326,12 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
     function burnFrom(address account, uint256 amount) public override nonReentrant {
         require(amount > 0, "ZERO");
         require(balanceOf(account) >= amount, "INSUFFICIENT_BALANCE");
+        require(allowance(account, msg.sender) >= amount, "NO_ALLOWANCE");
         uint256 tfuelAmount = _tfuelForShares(amount);
         super.burnFrom(account, amount);
         (uint256 index, uint256 readyAt, uint256 tip) = nodeManager.requestWithdrawal(account, tfuelAmount);
-        emit BurnQueued(account, amount, tfuelAmount - tip, readyAt, tip, index);
+        uint256 netToUser = tfuelAmount - tip;
+        emit BurnQueued(account, amount, netToUser, readyAt, tip, index);
     }
 
     /**
@@ -340,17 +348,19 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
     function burnAndRedeemDirect(uint256 amount) external nonReentrant {
         require(amount > 0, "ZERO_AMOUNT");
         require(balanceOf(msg.sender) >= amount, "INSUFFICIENT_BALANCE");
+
+        INodeManager nm = nodeManager;
         
         uint256 tfuelAmount = _tfuelForShares(amount);
         uint256 directRedeemFee = (tfuelAmount * directRedeemFeeBps) / 10_000;
         uint256 netTfuelAmount = tfuelAmount - directRedeemFee;
         
-        (bool canRedeem, ) = nodeManager.canDirectRedeem(netTfuelAmount);
+        (bool canRedeem, ) = nm.canDirectRedeem(netTfuelAmount);
         require(canRedeem, "INSUFFICIENT_LIQUIDITY");
         
         super.burn(amount);
         
-        nodeManager.directRedeem(msg.sender, netTfuelAmount, directRedeemFee);
+        nm.directRedeem(msg.sender, netTfuelAmount);
         
         emit BurnAndDirectRedeemed(msg.sender, amount, netTfuelAmount, directRedeemFee);
     }
@@ -447,7 +457,7 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
      * @notice Allows direct TFuel deposits via receive() fallback
      * @dev Forwards all received TFuel to NodeManager for staking
      */
-    receive() external payable {
+    receive() external payable whenNotPaused {
         nodeManager.depositTFuel{value: msg.value}();
     }
 }

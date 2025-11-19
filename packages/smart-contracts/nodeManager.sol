@@ -234,7 +234,7 @@ contract NodeManager is AccessControl, ReentrancyGuard {
     event FaultyNodeRecovered(address indexed node, uint256 amount);
     event KeeperTipSurplus(uint256 amount);
     event CurrentNetAssets(uint256 netAssets, bool isExact);
-    event FeeSplit(uint256 userPayout, address indexed userAddress, uint256 feePayout, address indexed feeAddress);
+
     // =============================================================================
     // MODIFIERS
     // =============================================================================
@@ -529,6 +529,11 @@ contract NodeManager is AccessControl, ReentrancyGuard {
         delete wq[wqHead];
         unchecked { wqHead++; }
 
+        if (wqHead >= wq.length) {
+            delete wq;        // resets length = 0
+            wqHead = 0;
+        }
+
         _pay(r.user, r.amount);
 
         _checkAndStakeTFuel();
@@ -539,9 +544,6 @@ contract NodeManager is AccessControl, ReentrancyGuard {
         (uint256 netAssets, bool isExact) = _getNetAssetsBackingSharesSafe();
         emit CurrentNetAssets(netAssets, isExact);
 
-        // FeeSplit Event -> It shows in the explorer
-        emit FeeSplit(r.amount, r.user, r.keeperTip, address(this));
-
         return (true, r.amount, wqHead - 1);
     }
 
@@ -549,10 +551,9 @@ contract NodeManager is AccessControl, ReentrancyGuard {
      * @notice Direct redeem for user
      * @param user Address of the user
      * @param amount Amount to redeem in TFuel
-     * @param fee Fee amount in TFuel
      * @dev Only callable by sTFuel contract
      */
-    function directRedeem(address user, uint256 amount, uint256 fee) external onlySTFuel nonReentrant {
+    function directRedeem(address user, uint256 amount) external onlySTFuel nonReentrant {
         require(address(this).balance >= (amount + getTotalTFuelReserved()), "INSUFFICIENT_BALANCE");
         _updateUnstakingNodes(_uLength());
         _pay(user, amount);
@@ -561,9 +562,6 @@ contract NodeManager is AccessControl, ReentrancyGuard {
         // Emit current net assets backing shares after payout
         (uint256 netAssets, bool isExact) = _getNetAssetsBackingSharesSafe();
         emit CurrentNetAssets(netAssets, isExact);
-
-        // FeeSplit Event -> It shows in the explorer
-        emit FeeSplit(amount, user, fee, address(this));
     }
 
     /**
@@ -590,9 +588,6 @@ contract NodeManager is AccessControl, ReentrancyGuard {
         // Emit current net assets backing shares after payout
         (uint256 netAssets, bool isExact) = _getNetAssetsBackingSharesSafe();
         emit CurrentNetAssets(netAssets, isExact);
-
-        // FeeSplit Event -> It shows in the explorer
-        emit FeeSplit(amount, to, 0, address(this));
     }
 
     // =============================================================================
@@ -615,7 +610,8 @@ contract NodeManager is AccessControl, ReentrancyGuard {
      * @dev Anyone can call this to keep the system healthy
      */
     function updateUnstakingNodes(uint256 maxNodes) external nonReentrant {
-        if (maxNodes > _uLength()) maxNodes = _uLength();
+        uint256 len = _uLength();
+        if (maxNodes > len) maxNodes = len;
         _updateUnstakingNodes(maxNodes);
         lastBalance = address(this).balance;
     }
@@ -678,6 +674,10 @@ contract NodeManager is AccessControl, ReentrancyGuard {
             
             delete wq[wqHead];
             unchecked { wqHead++; }
+            if (wqHead >= wq.length) {
+                delete wq;        // resets length = 0
+                wqHead = 0;
+            }
             processed++;
         }
 
@@ -833,6 +833,7 @@ contract NodeManager is AccessControl, ReentrancyGuard {
      * @dev Uses cached balance when unstaking is in progress to avoid inconsistencies
      * @return netAssets The net assets backing shares
      * @return isExact True if the amount is exact, false if it's an estimate
+     * @dev WARNING: For monitoring/UX only. Must NOT be used for pricing in sTFuel; use getNetAssetsBackingShares() instead.
      */
     function _getNetAssetsBackingSharesSafe() internal view returns (uint256 netAssets, bool isExact) {
         if (nextUnstakeBlock != 0 && block.number >= nextUnstakeBlock) {
@@ -1439,6 +1440,8 @@ contract NodeManager is AccessControl, ReentrancyGuard {
     // =============================================================================
     // REAL TFUEL STAKING FUNCTIONS (INTERNAL)
     // =============================================================================
+    /// @dev IMPORTANT: On Theta this is a native system contract for EEN staking.
+    ///      On any non-Theta chain this call is unsafe and MUST NOT be used.
 
     /**
      * @notice Stakes TFuel to an Elite Edge Node
@@ -1449,7 +1452,7 @@ contract NodeManager is AccessControl, ReentrancyGuard {
     function stakeTFuelToEEN(
         bytes memory eenSummary,
         uint256 amount
-    ) internal virtual returns (bool) {
+    ) internal returns (bool) {
         bytes memory data = abi.encodePacked(eenSummary, amount);
         uint256 balanceBefore = address(this).balance;
         (bool success, ) = address(0xce).call(data);
@@ -1465,9 +1468,12 @@ contract NodeManager is AccessControl, ReentrancyGuard {
      */
     function unstakeTFuelFromEEN(
         address eenAddr
-    ) internal virtual returns (bool) {
+    ) internal returns (bool) {
         bytes memory data = abi.encodePacked(eenAddr);
+        uint256 balanceBefore = address(this).balance;
         (bool success, ) = address(0xcf).call(data);
+        // Verify post-call balance didn't change
+        require(balanceBefore == address(this).balance, "TFUEL_DRAINED");
         return success;
     }
 }
