@@ -31,6 +31,11 @@ export const config = {
   batchSize: parseInt(process.env.BATCH_SIZE || '10'),
   maxConcurrentBatches: parseInt(process.env.MAX_CONCURRENT_BATCHES || '3'),
   batchDelay: parseInt(process.env.BATCH_DELAY || '100'),
+
+  // Edge Node Management
+  edgeNodeManagerApiKey: process.env.EDGE_NODE_MANAGER_API_KEY || '',
+  sessionSecret: process.env.SESSION_SECRET || 'change-me-in-production',
+  sessionExpiryHours: parseInt(process.env.SESSION_EXPIRY_HOURS || '24'),
 };
 
 export default config;
