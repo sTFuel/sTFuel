@@ -216,7 +216,7 @@
 			{
 				"indexed": false,
 				"internalType": "uint256",
-				"name": "tfuelRequested",
+				"name": "netTFuelOut",
 				"type": "uint256"
 			},
 			{
@@ -335,7 +335,7 @@
 			{
 				"indexed": false,
 				"internalType": "uint256",
-				"name": "feeShares",
+				"name": "feeTFuel",
 				"type": "uint256"
 			}
 		],

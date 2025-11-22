@@ -545,8 +545,8 @@ export class NormalizedEventProcessor {
     const userAddress = event.args?.user;
     const tfuelIn = event.args?.tfuelIn;
     const sharesOut = event.args?.sharesOut;
-    const feeShares = event.args?.feeShares;
-    if (!userAddress || !tfuelIn || !sharesOut || !feeShares) return;
+    const feeTFuel = event.args?.feeTFuel;
+    if (!userAddress || !tfuelIn || !sharesOut || !feeTFuel) return;
 
     const addressRecord = await this.getOrCreateAddress(userAddress, queryRunner);
     
@@ -582,7 +582,7 @@ export class NormalizedEventProcessor {
     
     user.totalDeposited = (currentDeposited + BigInt(tfuelIn)).toString(); // TFuel amounts
     user.totalMinted = (currentMinted + BigInt(sharesOut)).toString(); // sTFuel amounts
-    user.totalEnteringFeesPaid = (currentFees + BigInt(feeShares)).toString();
+    user.totalEnteringFeesPaid = (currentFees + BigInt(feeTFuel)).toString();
     // Note: stfuelBalance is updated via Transfer events, not here to avoid double counting
     user.lastActivityBlock = event.blockNumber;
     user.lastActivityTimestamp = event.timestamp;

@@ -353,7 +353,7 @@ export class EventProcessor {
                   );
                   result.tfuelIn = data[0].toString();
                   result.sharesOut = data[1].toString();
-                  result.feeShares = data[2].toString();
+                  result.feeTFuel = data[2].toString();
                 } catch (e) {
                   console.warn('Failed to parse Minted data:', e);
                 }
