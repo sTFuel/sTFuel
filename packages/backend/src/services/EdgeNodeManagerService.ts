@@ -40,7 +40,7 @@ export class EdgeNodeManagerService {
     body?: any
   ): Promise<any> {
     const url = `http://${ipAddress}${endpoint}`;
-    const headers: HeadersInit = {
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
 
@@ -48,7 +48,11 @@ export class EdgeNodeManagerService {
       headers['x-api-key'] = this.apiKey;
     }
 
-    const options: RequestInit = {
+    const options: {
+      method: string;
+      headers: Record<string, string>;
+      body?: string;
+    } = {
       method,
       headers,
     };
