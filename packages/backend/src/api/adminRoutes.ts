@@ -24,24 +24,39 @@ router.post('/login', async (req: Request, res: Response) => {
     const { sessionToken, expiresAt } = await adminAuthService.login(username, password);
 
     // Set session cookie
+    // Use 'none' for cross-site requests (frontend on different domain)
+    // 'none' requires secure: true
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isHttps = req.protocol === 'https' || req.get('x-forwarded-proto') === 'https';
+    
     res.cookie('adminSession', sessionToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      secure: isHttps, // Must be true for sameSite: 'none', and when using HTTPS
+      sameSite: isProduction && isHttps ? 'none' : 'lax', // 'none' for cross-site HTTPS, 'lax' for same-site
       expires: expiresAt,
+      path: '/',
     });
 
-    res.json({ success: true, expiresAt });
+    // Also return token in response for cross-site cookie issues
+    // Frontend can store in localStorage and send as header
+    res.json({ success: true, expiresAt, sessionToken });
   } catch (error: any) {
     res.status(401).json({ error: error.message || 'Login failed' });
   }
 });
 
-// Logout endpoint
-router.post('/logout', adminAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+// Logout endpoint (no auth required - just clears session)
+router.post('/logout', async (req: Request, res: Response) => {
   try {
     const sessionToken = req.cookies?.adminSession || req.headers['x-admin-session'] as string;
-    await adminAuthService.logout(sessionToken);
+    if (sessionToken) {
+      try {
+        await adminAuthService.logout(sessionToken);
+      } catch (error) {
+        // Ignore errors if session doesn't exist
+        console.log('Session already invalid or expired');
+      }
+    }
 
     res.clearCookie('adminSession');
     res.json({ success: true });
