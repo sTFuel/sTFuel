@@ -206,6 +206,7 @@ router.post('/servers', adminAuthMiddleware, async (req: AuthenticatedRequest, r
 
     // Check if server already exists
     const serverRepo = AppDataSource.getRepository(Server);
+    const managedNodeRepo = AppDataSource.getRepository(ManagedNode);
     const existing = await serverRepo.findOne({ where: { ipAddress } });
     if (existing) {
       res.status(400).json({ error: 'Server with this IP address already exists' });
