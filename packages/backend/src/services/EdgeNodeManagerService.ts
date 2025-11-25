@@ -1,3 +1,4 @@
+import fetch from 'node-fetch';
 import { config } from '../config/environment';
 
 export interface NodeStatus {
@@ -93,10 +94,17 @@ export class EdgeNodeManagerService {
 
   async checkServerHealth(ipAddress: string): Promise<boolean> {
     try {
+      const headers: Record<string, string> = {};
+      if (this.apiKey) {
+        headers['x-api-key'] = this.apiKey;
+      }
+
       const response = await fetch(`http://${ipAddress}/health`, {
         method: 'GET',
+        headers,
         signal: AbortSignal.timeout(5000), // 5 second timeout
       });
+
       return response.ok;
     } catch (error) {
       return false;

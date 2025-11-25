@@ -25,12 +25,14 @@
     "express": "^4.18.2",
     "graphql": "^16.8.1",
     "graphql-scalars": "^1.22.4",
+    "node-fetch": "^2.6.7",
     "pg": "^8.11.3",
     "reflect-metadata": "^0.1.13",
     "typeorm": "^0.3.17",
     "winston": "^3.11.0"
   },
   "devDependencies": {
+    "@types/node-fetch": "^2.6.4",
     "@types/bcryptjs": "^2.4.6",
     "@types/cookie-parser": "^1.4.6",
     "@types/cors": "^2.8.19",
