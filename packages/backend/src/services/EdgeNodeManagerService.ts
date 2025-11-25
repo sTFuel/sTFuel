@@ -1,29 +1,49 @@
 import { config } from '../config/environment';
 
 export interface NodeStatus {
-  container: {
-    status: string;
-    name: string;
+  container?: {
+    id?: string;
+    name?: string;
+    status?: string;
+    ports?: Record<string, string>;
   };
-  rpc: {
-    isReachable: boolean;
-    url?: string;
+  rpc?: {
+    status?: {
+      address?: string;
+      chain_id?: string;
+      peer_id?: string;
+      current_height?: string;
+      current_time?: string;
+    };
+    summary?: Record<string, string>;
+    address?: string;
   };
-  metadata: {
-    name: string;
-    ports: number[];
-    network: string;
+  metadata?: {
+    name?: string;
+    port?: number;
+    status?: string;
+    keystorePath?: string;
+    createdAt?: string;
+    updatedAt?: string;
+    containerId?: string;
+    containerName?: string;
   };
 }
 
-export interface NodeInfo {
+export interface NodeListItem {
   name: string;
-  status: NodeStatus;
+  port?: number;
+  status?: string;
+  keystorePath?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  containerId?: string;
+  containerName?: string;
 }
 
 export interface CreateNodeResponse {
   name: string;
-  status: NodeStatus;
+  status?: string;
 }
 
 export class EdgeNodeManagerService {
@@ -98,7 +118,7 @@ export class EdgeNodeManagerService {
 
   async getNodeStatus(ipAddress: string, nodeId: string): Promise<NodeStatus> {
     const response = await this.makeRequest(ipAddress, 'GET', `/nodes/${nodeId}/status`);
-    return response.status;
+    return response;
   }
 
   async startNode(ipAddress: string, nodeId: string): Promise<void> {
@@ -113,7 +133,7 @@ export class EdgeNodeManagerService {
     return this.makeRequest(ipAddress, 'GET', `/nodes/${nodeId}/keystore`);
   }
 
-  async listNodes(ipAddress: string): Promise<NodeInfo[]> {
+  async listNodes(ipAddress: string): Promise<NodeListItem[]> {
     const response = await this.makeRequest(ipAddress, 'GET', '/nodes');
     return response.nodes || [];
   }

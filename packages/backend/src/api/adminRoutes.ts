@@ -4,12 +4,98 @@ import { Server } from '../database/entities/Server';
 import { ManagedNode } from '../database/entities/ManagedNode';
 import { Address } from '../database/entities/Address';
 import { AdminAuthService } from '../services/AdminAuthService';
-import { EdgeNodeManagerService } from '../services/EdgeNodeManagerService';
+import { EdgeNodeManagerService, NodeStatus } from '../services/EdgeNodeManagerService';
 import { adminAuthMiddleware, AuthenticatedRequest } from '../middleware/adminAuth';
 
 const router = Router();
 const adminAuthService = new AdminAuthService();
 const edgeNodeManagerService = new EdgeNodeManagerService();
+
+const normalizeAddress = (rawAddress?: string | null): string | null => {
+  if (!rawAddress) return null;
+  const address = rawAddress.toLowerCase();
+  return address.startsWith('0x') ? address : `0x${address}`;
+};
+
+const extractAddressFromStatus = (status: NodeStatus): string | null => {
+  return (
+    normalizeAddress(status.rpc?.status?.address) ||
+    normalizeAddress(status.rpc?.address) ||
+    null
+  );
+};
+
+const extractSummaryFromStatus = (status: NodeStatus): string | null => {
+  const summaryObj = status.rpc?.summary;
+  if (!summaryObj) return null;
+  if (typeof summaryObj.Summary === 'string') {
+    return summaryObj.Summary;
+  }
+
+  const values = Object.values(summaryObj);
+  const firstValue = values.find((value) => typeof value === 'string');
+  return (firstValue as string) || null;
+};
+
+const syncExistingNodesForServer = async (server: Server): Promise<void> => {
+  const managedNodeRepo = AppDataSource.getRepository(ManagedNode);
+  const addressRepo = AppDataSource.getRepository(Address);
+
+  try {
+    const nodes = await edgeNodeManagerService.listNodes(server.ipAddress);
+    for (const node of nodes) {
+      try {
+        const status = await edgeNodeManagerService.getNodeStatus(server.ipAddress, node.name);
+        const normalizedAddress = extractAddressFromStatus(status);
+        if (!normalizedAddress) {
+          console.warn(
+            `Unable to determine address for node ${node.name} on server ${server.ipAddress}`
+          );
+          continue;
+        }
+
+        let addressEntity = await addressRepo.findOne({ where: { address: normalizedAddress } });
+        if (!addressEntity) {
+          addressEntity = addressRepo.create({ address: normalizedAddress });
+          addressEntity = await addressRepo.save(addressEntity);
+        }
+
+        const existingByNode = await managedNodeRepo.findOne({ where: { nodeId: node.name } });
+        const existingByAddress = await managedNodeRepo.findOne({ where: { addressId: addressEntity.id } });
+
+        if (existingByNode || existingByAddress) {
+          continue;
+        }
+
+        let keystore: object | null = null;
+        try {
+          keystore = await edgeNodeManagerService.getNodeKeystore(server.ipAddress, node.name);
+        } catch (error) {
+          console.warn(`Failed to fetch keystore for node ${node.name}:`, error);
+        }
+
+        const summary = extractSummaryFromStatus(status);
+
+        const managedNode = managedNodeRepo.create({
+          addressId: addressEntity.id,
+          serverId: server.id,
+          nodeId: node.name,
+          keystore: keystore || null,
+          summary: summary || null,
+        });
+
+        await managedNodeRepo.save(managedNode);
+      } catch (error) {
+        console.error(
+          `Failed to sync node ${node.name} for server ${server.ipAddress}:`,
+          error
+        );
+      }
+    }
+  } catch (error) {
+    console.error(`Failed to list nodes for server ${server.ipAddress}:`, error);
+  }
+};
 
 // Login endpoint (no auth required)
 router.post('/login', async (req: Request, res: Response) => {
@@ -137,13 +223,30 @@ router.post('/servers', adminAuthMiddleware, async (req: AuthenticatedRequest, r
 
     const savedServer = await serverRepo.save(server);
 
+  // Attempt to sync any existing nodes on the server
+  await syncExistingNodesForServer(savedServer);
+
+  const refreshedServer = await serverRepo.findOne({
+    where: { id: savedServer.id },
+    relations: ['managedNodes', 'managedNodes.address'],
+  });
+
+  const nodeCount = await managedNodeRepo.count({ where: { serverId: savedServer.id } });
+
     res.status(201).json({
-      id: savedServer.id,
-      ipAddress: savedServer.ipAddress,
-      isHealthy: savedServer.isHealthy,
-      maxEdgeNodes: savedServer.maxEdgeNodes,
-      createdAt: savedServer.createdAt,
-      updatedAt: savedServer.updatedAt,
+    id: savedServer.id,
+    ipAddress: savedServer.ipAddress,
+    isHealthy: savedServer.isHealthy,
+    maxEdgeNodes: savedServer.maxEdgeNodes,
+    currentNodeCount: nodeCount,
+    managedNodes: (refreshedServer?.managedNodes || []).map((node) => ({
+      id: node.id,
+      nodeId: node.nodeId,
+      address: node.address?.address,
+      summary: node.summary,
+    })),
+    createdAt: savedServer.createdAt,
+    updatedAt: savedServer.updatedAt,
     });
   } catch (error: any) {
     console.error('Error creating server:', error);
@@ -154,7 +257,7 @@ router.post('/servers', adminAuthMiddleware, async (req: AuthenticatedRequest, r
 // Create new node on server
 router.post('/nodes', adminAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { serverId, name, address, keystore, summary } = req.body;
+    const { serverId, name, keystore } = req.body;
 
     if (!serverId || !name) {
       res.status(400).json({ error: 'serverId and name are required' });
@@ -185,32 +288,6 @@ router.post('/nodes', adminAuthMiddleware, async (req: AuthenticatedRequest, res
       return;
     }
 
-    // Get or create address
-    let addressEntity: Address;
-    if (address) {
-      // Normalize address (remove 0x prefix if present, convert to lowercase)
-      const normalizedAddress = address.toLowerCase().replace(/^0x/, '');
-      const fullAddress = `0x${normalizedAddress}`;
-
-      let existingAddress = await addressRepo.findOne({ where: { address: fullAddress } });
-      if (!existingAddress) {
-        addressEntity = addressRepo.create({ address: fullAddress });
-        addressEntity = await addressRepo.save(addressEntity);
-      } else {
-        addressEntity = existingAddress;
-      }
-
-      // Check if managed node with this address already exists
-      const existingNode = await managedNodeRepo.findOne({ where: { addressId: addressEntity.id } });
-      if (existingNode) {
-        res.status(400).json({ error: 'A managed node with this address already exists' });
-        return;
-      }
-    } else {
-      res.status(400).json({ error: 'address is required' });
-      return;
-    }
-
     // Create node on the server
     let nodeResponse;
     try {
@@ -220,11 +297,38 @@ router.post('/nodes', adminAuthMiddleware, async (req: AuthenticatedRequest, res
       return;
     }
 
+    const nodeName = nodeResponse?.name || name;
+
+    const nodeStatus = await edgeNodeManagerService.getNodeStatus(server.ipAddress, nodeName);
+    const normalizedAddress = extractAddressFromStatus(nodeStatus);
+    if (!normalizedAddress) {
+      res.status(500).json({ error: 'Unable to determine node address from server response' });
+      return;
+    }
+
+    let addressEntity =
+      (await addressRepo.findOne({ where: { address: normalizedAddress } })) ||
+      addressRepo.create({ address: normalizedAddress });
+
+    if (!addressEntity.id) {
+      addressEntity = await addressRepo.save(addressEntity);
+    }
+
+    const existingByNode = await managedNodeRepo.findOne({ where: { nodeId: nodeName } });
+    const existingByAddress = await managedNodeRepo.findOne({ where: { addressId: addressEntity.id } });
+
+    if (existingByNode || existingByAddress) {
+      res.status(400).json({ error: 'A managed node with this address or node name already exists' });
+      return;
+    }
+
+    const summary = extractSummaryFromStatus(nodeStatus);
+
     // Get keystore if not provided
     let nodeKeystore = keystore;
     if (!nodeKeystore) {
       try {
-        nodeKeystore = await edgeNodeManagerService.getNodeKeystore(server.ipAddress, nodeResponse.name);
+        nodeKeystore = await edgeNodeManagerService.getNodeKeystore(server.ipAddress, nodeName);
       } catch (error) {
         console.warn('Failed to fetch keystore:', error);
       }
@@ -234,7 +338,7 @@ router.post('/nodes', adminAuthMiddleware, async (req: AuthenticatedRequest, res
     const managedNode = managedNodeRepo.create({
       addressId: addressEntity.id,
       serverId: server.id,
-      nodeId: nodeResponse.name,
+      nodeId: nodeName,
       keystore: nodeKeystore || null,
       summary: summary || null,
     });
