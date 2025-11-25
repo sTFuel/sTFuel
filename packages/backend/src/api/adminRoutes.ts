@@ -37,6 +37,32 @@ const extractSummaryFromStatus = (status: NodeStatus): string | null => {
   return (firstValue as string) || null;
 };
 
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const fetchNodeStatusWithRetry = async (
+  server: Server,
+  nodeName: string,
+  retries: number = 5,
+  delayMs: number = 2000
+): Promise<NodeStatus | null> => {
+  for (let attempt = 0; attempt < retries; attempt++) {
+    try {
+      const status = await edgeNodeManagerService.getNodeStatus(server.ipAddress, nodeName);
+      const address = extractAddressFromStatus(status);
+      if (address) {
+        return status;
+      }
+    } catch (error) {
+      console.warn(
+        `Attempt ${attempt + 1} to fetch status for node ${nodeName} on ${server.ipAddress} failed:`,
+        error
+      );
+    }
+    await sleep(delayMs);
+  }
+  return null;
+};
+
 const syncExistingNodesForServer = async (server: Server): Promise<void> => {
   const managedNodeRepo = AppDataSource.getRepository(ManagedNode);
   const addressRepo = AppDataSource.getRepository(Address);
@@ -300,7 +326,10 @@ router.post('/nodes', adminAuthMiddleware, async (req: AuthenticatedRequest, res
 
     const nodeName = nodeResponse?.name || name;
 
-    const nodeStatus = await edgeNodeManagerService.getNodeStatus(server.ipAddress, nodeName);
+    const nodeStatus =
+      (await fetchNodeStatusWithRetry(server, nodeName)) ||
+      (await edgeNodeManagerService.getNodeStatus(server.ipAddress, nodeName));
+
     const normalizedAddress = extractAddressFromStatus(nodeStatus);
     if (!normalizedAddress) {
       res.status(500).json({ error: 'Unable to determine node address from server response' });
