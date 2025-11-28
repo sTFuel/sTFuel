@@ -5,6 +5,7 @@ import { Server } from './Server';
 @Entity('managed_nodes')
 @Index(['addressId'], { unique: true })
 @Index(['serverId'])
+@Index(['isRunning'])
 export class ManagedNode {
   @PrimaryGeneratedColumn()
   id: number;
@@ -31,6 +32,9 @@ export class ManagedNode {
 
   @Column({ type: 'text', nullable: true })
   summary: string | null;
+
+  @Column({ default: false })
+  isRunning: boolean;
 
   @CreateDateColumn()
   createdAt: Date;

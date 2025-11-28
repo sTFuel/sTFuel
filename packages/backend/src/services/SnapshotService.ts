@@ -3,13 +3,19 @@ import AppDataSource from '../database/data-source';
 import { HourlySnapshot } from '../database/entities/HourlySnapshot';
 import { NodeManagerEvent } from '../database/entities/NodeManagerEvent';
 import { StfuelEvent } from '../database/entities/StfuelEvent';
+import { Server } from '../database/entities/Server';
+import { ManagedNode } from '../database/entities/ManagedNode';
+import { EdgeNode } from '../database/entities/EdgeNode';
+import { Address } from '../database/entities/Address';
 import { ContractManager } from '../contracts/contracts';
+import { EdgeNodeManagerService, NodeStatus } from './EdgeNodeManagerService';
 
 export class SnapshotService {
   private snapshotRepo: Repository<HourlySnapshot>;
   private nodeManagerEventRepo: Repository<NodeManagerEvent>;
   private stfuelEventRepo: Repository<StfuelEvent>;
   private contractManager: ContractManager;
+  private edgeNodeManagerService: EdgeNodeManagerService;
   private nextSnapshotTime: number | null = null; // Unix timestamp of next snapshot
 
   constructor() {
@@ -17,6 +23,7 @@ export class SnapshotService {
     this.nodeManagerEventRepo = AppDataSource.getRepository(NodeManagerEvent);
     this.stfuelEventRepo = AppDataSource.getRepository(StfuelEvent);
     this.contractManager = new ContractManager();
+    this.edgeNodeManagerService = new EdgeNodeManagerService();
   }
 
   async checkAndCreateSnapshot(blockNumber: number, blockTimestamp: number): Promise<void> {
@@ -128,6 +135,9 @@ export class SnapshotService {
 
       await this.snapshotRepo.save(snapshot);
       console.log(`Snapshot created for block ${blockNumber}`);
+
+      // Update node statuses from Edge Node Manager API
+      await this.updateNodeStatuses();
 
     } catch (error) {
       console.error('Error creating snapshot:', error);
@@ -605,6 +615,183 @@ export class SnapshotService {
 
   getNextSnapshotTime(): number | null {
     return this.nextSnapshotTime;
+  }
+
+  private normalizeAddress(rawAddress?: string | null): string | null {
+    if (!rawAddress) return null;
+    const address = rawAddress.toLowerCase();
+    return address.startsWith('0x') ? address : `0x${address}`;
+  }
+
+  private extractAddressFromStatus(status: NodeStatus): string | null {
+    return (
+      this.normalizeAddress(status.rpc?.status?.address) ||
+      this.normalizeAddress(status.rpc?.address) ||
+      null
+    );
+  }
+
+  private extractSummaryFromStatus(status: NodeStatus): string | null {
+    const summaryObj = status.rpc?.summary;
+    if (!summaryObj) return null;
+    if (typeof summaryObj.Summary === 'string') {
+      return summaryObj.Summary;
+    }
+
+    const values = Object.values(summaryObj);
+    const firstValue = values.find((value) => typeof value === 'string');
+    return (firstValue as string) || null;
+  }
+
+  private async updateNodeStatuses(): Promise<void> {
+    const serverRepo = AppDataSource.getRepository(Server);
+    const managedNodeRepo = AppDataSource.getRepository(ManagedNode);
+    const edgeNodeRepo = AppDataSource.getRepository(EdgeNode);
+    const addressRepo = AppDataSource.getRepository(Address);
+
+    try {
+      const servers = await serverRepo.find();
+      console.log(`Updating node statuses for ${servers.length} server(s)`);
+
+      for (const server of servers) {
+        try {
+          // Get list of nodes from the server
+          const nodes = await this.edgeNodeManagerService.listNodes(server.ipAddress);
+          console.log(`Found ${nodes.length} node(s) on server ${server.ipAddress}`);
+
+          // Track which nodes we've seen on this server
+          const seenNodeIds = new Set<string>();
+
+          for (const node of nodes) {
+            try {
+              const isRunning = node.status?.toLowerCase() === 'running';
+              seenNodeIds.add(node.name);
+
+              // Find existing ManagedNode by nodeId and serverId
+              let managedNode = await managedNodeRepo.findOne({
+                where: { nodeId: node.name, serverId: server.id },
+              });
+
+              if (managedNode) {
+                // Update existing node's isRunning status
+                managedNode.isRunning = isRunning;
+                await managedNodeRepo.save(managedNode);
+              } else {
+                // Node doesn't exist in database, create it
+                console.log(`Creating new ManagedNode for ${node.name} on server ${server.ipAddress}`);
+
+                // Get node status to extract address
+                let nodeStatus: NodeStatus | null = null;
+                try {
+                  nodeStatus = await this.edgeNodeManagerService.getNodeStatus(server.ipAddress, node.name);
+                } catch (error) {
+                  console.warn(`Failed to get status for node ${node.name} on ${server.ipAddress}:`, error);
+                  continue;
+                }
+
+                const normalizedAddress = this.extractAddressFromStatus(nodeStatus);
+                if (!normalizedAddress) {
+                  console.warn(
+                    `Unable to determine address for node ${node.name} on server ${server.ipAddress}`
+                  );
+                  continue;
+                }
+
+                // Find or create Address entity
+                let addressEntity = await addressRepo.findOne({ where: { address: normalizedAddress } });
+                if (!addressEntity) {
+                  addressEntity = addressRepo.create({ address: normalizedAddress });
+                  addressEntity = await addressRepo.save(addressEntity);
+                }
+
+                // Check if a ManagedNode already exists for this address
+                const existingByAddress = await managedNodeRepo.findOne({
+                  where: { addressId: addressEntity.id },
+                });
+                if (existingByAddress) {
+                  console.warn(
+                    `ManagedNode already exists for address ${normalizedAddress}, skipping creation`
+                  );
+                  continue;
+                }
+
+                // Fetch keystore and summary
+                let keystore: object | null = null;
+                try {
+                  keystore = await this.edgeNodeManagerService.getNodeKeystore(server.ipAddress, node.name);
+                } catch (error) {
+                  console.warn(`Failed to fetch keystore for node ${node.name}:`, error);
+                }
+
+                const summary = this.extractSummaryFromStatus(nodeStatus);
+
+                // Create new ManagedNode
+                managedNode = managedNodeRepo.create({
+                  addressId: addressEntity.id,
+                  serverId: server.id,
+                  nodeId: node.name,
+                  keystore: keystore || null,
+                  summary: summary || null,
+                  isRunning: isRunning,
+                });
+
+                await managedNodeRepo.save(managedNode);
+                console.log(`Created ManagedNode for ${node.name} with address ${normalizedAddress}`);
+              }
+            } catch (error) {
+              console.error(
+                `Error processing node ${node.name} on server ${server.ipAddress}:`,
+                error
+              );
+            }
+          }
+
+          // Update isRunning to false for nodes that exist in database but not on server
+          const allManagedNodesOnServer = await managedNodeRepo.find({
+            where: { serverId: server.id },
+          });
+
+          for (const managedNode of allManagedNodesOnServer) {
+            if (!seenNodeIds.has(managedNode.nodeId)) {
+              managedNode.isRunning = false;
+              await managedNodeRepo.save(managedNode);
+              console.log(
+                `Set isRunning=false for node ${managedNode.nodeId} on server ${server.ipAddress} (not found on server)`
+              );
+            }
+          }
+        } catch (error) {
+          console.error(`Failed to update node statuses for server ${server.ipAddress}:`, error);
+          // Continue with other servers even if one fails
+        }
+      }
+
+      // Update isLive in EdgeNode table for all ManagedNodes
+      const allManagedNodes = await managedNodeRepo.find({ relations: ['address'] });
+      for (const managedNode of allManagedNodes) {
+        try {
+          const edgeNode = await edgeNodeRepo.findOne({
+            where: { addressId: managedNode.addressId },
+          });
+
+          if (edgeNode) {
+            // Update isLive based on isRunning status
+            edgeNode.isLive = managedNode.isRunning;
+            await edgeNodeRepo.save(edgeNode);
+          }
+        } catch (error) {
+          console.error(
+            `Error updating isLive for EdgeNode with addressId ${managedNode.addressId}:`,
+            error
+          );
+        }
+      }
+
+      console.log('Node status update completed');
+    } catch (error) {
+      console.error('Error updating node statuses:', error);
+      // Don't throw - this shouldn't fail the snapshot creation
+    }
   }
 }
 

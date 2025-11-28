@@ -201,6 +201,7 @@ router.get('/servers', adminAuthMiddleware, async (req: AuthenticatedRequest, re
             nodeId: node.nodeId,
             address: node.address?.address,
             summary: node.summary,
+            isRunning: node.isRunning,
           })),
           createdAt: server.createdAt,
           updatedAt: server.updatedAt,
@@ -271,6 +272,7 @@ router.post('/servers', adminAuthMiddleware, async (req: AuthenticatedRequest, r
       nodeId: node.nodeId,
       address: node.address?.address,
       summary: node.summary,
+      isRunning: node.isRunning,
     })),
     createdAt: savedServer.createdAt,
     updatedAt: savedServer.updatedAt,
@@ -354,6 +356,11 @@ router.post('/nodes', adminAuthMiddleware, async (req: AuthenticatedRequest, res
 
     const summary = extractSummaryFromStatus(nodeStatus);
 
+    // Determine if node is running from status
+    const containerStatus = nodeStatus?.container?.status?.toLowerCase();
+    const metadataStatus = nodeStatus?.metadata?.status?.toLowerCase();
+    const isRunning = containerStatus === 'running' || metadataStatus === 'running';
+
     // Get keystore if not provided
     let nodeKeystore = keystore;
     if (!nodeKeystore) {
@@ -371,6 +378,7 @@ router.post('/nodes', adminAuthMiddleware, async (req: AuthenticatedRequest, res
       nodeId: nodeName,
       keystore: nodeKeystore || null,
       summary: summary || null,
+      isRunning: isRunning,
     });
 
     const savedNode = await managedNodeRepo.save(managedNode);
@@ -382,6 +390,7 @@ router.post('/nodes', adminAuthMiddleware, async (req: AuthenticatedRequest, res
       nodeId: savedNode.nodeId,
       address: addressEntity.address,
       summary: savedNode.summary,
+      isRunning: savedNode.isRunning,
       createdAt: savedNode.createdAt,
       updatedAt: savedNode.updatedAt,
     });
@@ -415,6 +424,10 @@ router.post('/nodes/:id/start', adminAuthMiddleware, async (req: AuthenticatedRe
 
     await edgeNodeManagerService.startNode(node.server.ipAddress, node.nodeId);
 
+    // Update isRunning status
+    node.isRunning = true;
+    await managedNodeRepo.save(node);
+
     res.json({ success: true, message: 'Node started successfully' });
   } catch (error: any) {
     console.error('Error starting node:', error);
@@ -445,6 +458,10 @@ router.post('/nodes/:id/stop', adminAuthMiddleware, async (req: AuthenticatedReq
     }
 
     await edgeNodeManagerService.stopNode(node.server.ipAddress, node.nodeId);
+
+    // Update isRunning status
+    node.isRunning = false;
+    await managedNodeRepo.save(node);
 
     res.json({ success: true, message: 'Node stopped successfully' });
   } catch (error: any) {
