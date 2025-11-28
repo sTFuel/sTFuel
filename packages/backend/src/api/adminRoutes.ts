@@ -471,21 +471,94 @@ router.post('/nodes/:id/stop', adminAuthMiddleware, async (req: AuthenticatedReq
   }
 });
 
-// Set node fee (placeholder)
+// Set node fee
 router.post('/nodes/:id/set-fee', adminAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const nodeId = parseInt(req.params.id);
-    const managedNodeRepo = AppDataSource.getRepository(ManagedNode);
+    const { rewardWallet, splitFee } = req.body;
 
-    const node = await managedNodeRepo.findOne({ where: { id: nodeId } });
+    // Validate inputs
+    if (!rewardWallet || typeof rewardWallet !== 'string') {
+      res.status(400).json({ error: 'rewardWallet is required and must be a string' });
+      return;
+    }
+
+    // Validate address format (0x followed by 40 hex characters)
+    const addressRegex = /^0x[a-fA-F0-9]{40}$/;
+    if (!addressRegex.test(rewardWallet)) {
+      res.status(400).json({ error: 'Invalid rewardWallet address format' });
+      return;
+    }
+
+    if (splitFee === undefined || splitFee === null || typeof splitFee !== 'number') {
+      res.status(400).json({ error: 'splitFee is required and must be a number' });
+      return;
+    }
+
+    if (!Number.isInteger(splitFee) || splitFee < 0 || splitFee > 1000) {
+      res.status(400).json({ error: 'splitFee must be an integer between 0 and 1000 (0-10%)' });
+      return;
+    }
+
+    const managedNodeRepo = AppDataSource.getRepository(ManagedNode);
+    const serverRepo = AppDataSource.getRepository(Server);
+
+    const node = await managedNodeRepo.findOne({
+      where: { id: nodeId },
+      relations: ['server'],
+    });
 
     if (!node) {
       res.status(404).json({ error: 'Node not found' });
       return;
     }
 
-    // Placeholder implementation
-    res.json({ success: true, message: 'Node fee update endpoint (placeholder)' });
+    if (!node.server.isHealthy) {
+      res.status(400).json({ error: 'Server is not healthy' });
+      return;
+    }
+
+    try {
+      const response = await edgeNodeManagerService.setRewardDistribution(
+        node.server.ipAddress,
+        node.nodeId,
+        rewardWallet,
+        splitFee
+      );
+
+      // Check if the response indicates success or failure
+      if (response.success === false) {
+        res.status(400).json({
+          success: false,
+          error: response.error || 'Failed to set reward distribution',
+        });
+        return;
+      }
+
+      // Success response
+      res.json({
+        success: true,
+        transactionHash: response.transactionHash,
+        message: response.message || 'Reward distribution set successfully',
+      });
+    } catch (error: any) {
+      // Handle API errors (including insufficient TFuel)
+      const errorMessage = error.message || 'Failed to set reward distribution';
+      
+      // Try to parse error message for insufficient TFuel
+      if (errorMessage.includes('Insufficient TFuel')) {
+        res.status(400).json({
+          success: false,
+          error: errorMessage,
+        });
+      } else {
+        console.error('Error setting reward distribution:', error);
+        res.status(500).json({
+          success: false,
+          error: errorMessage,
+        });
+      }
+    }
   } catch (error: any) {
     console.error('Error setting node fee:', error);
     res.status(500).json({ error: error.message || 'Failed to set node fee' });

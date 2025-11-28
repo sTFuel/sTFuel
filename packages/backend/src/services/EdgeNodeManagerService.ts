@@ -145,5 +145,22 @@ export class EdgeNodeManagerService {
     const response = await this.makeRequest(ipAddress, 'GET', '/nodes');
     return response.nodes || [];
   }
+
+  async setRewardDistribution(
+    ipAddress: string,
+    nodeName: string,
+    rewardWallet: string,
+    splitFee: number
+  ): Promise<any> {
+    return this.makeRequest(
+      ipAddress,
+      'POST',
+      `/nodes/${nodeName}/stake-reward-distribution`,
+      {
+        rewardWallet,
+        splitFee,
+      }
+    );
+  }
 }
 
