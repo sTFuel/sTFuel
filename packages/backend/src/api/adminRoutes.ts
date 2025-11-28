@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import AppDataSource from '../database/data-source';
 import { Server } from '../database/entities/Server';
 import { ManagedNode } from '../database/entities/ManagedNode';
+import { EdgeNode } from '../database/entities/EdgeNode';
 import { Address } from '../database/entities/Address';
 import { AdminAuthService } from '../services/AdminAuthService';
 import { EdgeNodeManagerService, NodeStatus } from '../services/EdgeNodeManagerService';
@@ -488,6 +489,177 @@ router.post('/nodes/:id/set-fee', adminAuthMiddleware, async (req: Authenticated
   } catch (error: any) {
     console.error('Error setting node fee:', error);
     res.status(500).json({ error: error.message || 'Failed to set node fee' });
+  }
+});
+
+// Refresh server status and node statuses
+router.post('/servers/:id/refresh', adminAuthMiddleware, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const serverId = parseInt(req.params.id);
+    const serverRepo = AppDataSource.getRepository(Server);
+    const managedNodeRepo = AppDataSource.getRepository(ManagedNode);
+    const edgeNodeRepo = AppDataSource.getRepository(EdgeNode);
+    const addressRepo = AppDataSource.getRepository(Address);
+
+    const server = await serverRepo.findOne({ where: { id: serverId } });
+    if (!server) {
+      res.status(404).json({ error: 'Server not found' });
+      return;
+    }
+
+    // Check server health
+    const isHealthy = await edgeNodeManagerService.checkServerHealth(server.ipAddress);
+    server.isHealthy = isHealthy;
+    await serverRepo.save(server);
+
+    if (!isHealthy) {
+      // If server is unhealthy, set all nodes to not running
+      const allManagedNodesOnServer = await managedNodeRepo.find({
+        where: { serverId: server.id },
+      });
+      for (const managedNode of allManagedNodesOnServer) {
+        managedNode.isRunning = false;
+        await managedNodeRepo.save(managedNode);
+      }
+    } else {
+      // Server is healthy, update node statuses
+      try {
+        const nodes = await edgeNodeManagerService.listNodes(server.ipAddress);
+        const seenNodeIds = new Set<string>();
+
+        for (const node of nodes) {
+          try {
+            const isRunning = node.status?.toLowerCase() === 'running';
+            seenNodeIds.add(node.name);
+
+            let managedNode = await managedNodeRepo.findOne({
+              where: { nodeId: node.name, serverId: server.id },
+            });
+
+            if (managedNode) {
+              managedNode.isRunning = isRunning;
+              await managedNodeRepo.save(managedNode);
+            } else {
+              // Node doesn't exist in database, create it
+              let nodeStatus: NodeStatus | null = null;
+              try {
+                nodeStatus = await edgeNodeManagerService.getNodeStatus(server.ipAddress, node.name);
+              } catch (error) {
+                console.warn(`Failed to get status for node ${node.name} on ${server.ipAddress}:`, error);
+                continue;
+              }
+
+              const normalizedAddress = extractAddressFromStatus(nodeStatus);
+              if (!normalizedAddress) {
+                console.warn(
+                  `Unable to determine address for node ${node.name} on server ${server.ipAddress}`
+                );
+                continue;
+              }
+
+              let addressEntity = await addressRepo.findOne({ where: { address: normalizedAddress } });
+              if (!addressEntity) {
+                addressEntity = addressRepo.create({ address: normalizedAddress });
+                addressEntity = await addressRepo.save(addressEntity);
+              }
+
+              const existingByAddress = await managedNodeRepo.findOne({
+                where: { addressId: addressEntity.id },
+              });
+              if (existingByAddress) {
+                console.warn(
+                  `ManagedNode already exists for address ${normalizedAddress}, skipping creation`
+                );
+                continue;
+              }
+
+              let keystore: object | null = null;
+              try {
+                keystore = await edgeNodeManagerService.getNodeKeystore(server.ipAddress, node.name);
+              } catch (error) {
+                console.warn(`Failed to fetch keystore for node ${node.name}:`, error);
+              }
+
+              const summary = extractSummaryFromStatus(nodeStatus);
+
+              managedNode = managedNodeRepo.create({
+                addressId: addressEntity.id,
+                serverId: server.id,
+                nodeId: node.name,
+                keystore: keystore || null,
+                summary: summary || null,
+                isRunning: isRunning,
+              });
+
+              await managedNodeRepo.save(managedNode);
+            }
+          } catch (error) {
+            console.error(`Error processing node ${node.name} on server ${server.ipAddress}:`, error);
+          }
+        }
+
+        // Update isRunning to false for nodes that exist in database but not on server
+        const allManagedNodesOnServer = await managedNodeRepo.find({
+          where: { serverId: server.id },
+        });
+
+        for (const managedNode of allManagedNodesOnServer) {
+          if (!seenNodeIds.has(managedNode.nodeId)) {
+            managedNode.isRunning = false;
+            await managedNodeRepo.save(managedNode);
+          }
+        }
+
+        // Update isLive in EdgeNode table for this server's nodes
+        for (const managedNode of allManagedNodesOnServer) {
+          try {
+            const edgeNode = await edgeNodeRepo.findOne({
+              where: { addressId: managedNode.addressId },
+            });
+
+            if (edgeNode) {
+              edgeNode.isLive = managedNode.isRunning;
+              await edgeNodeRepo.save(edgeNode);
+            }
+          } catch (error) {
+            console.error(
+              `Error updating isLive for EdgeNode with addressId ${managedNode.addressId}:`,
+              error
+            );
+          }
+        }
+      } catch (error) {
+        console.error(`Failed to update node statuses for server ${server.ipAddress}:`, error);
+      }
+    }
+
+    // Return updated server data
+    const refreshedServer = await serverRepo.findOne({
+      where: { id: server.id },
+      relations: ['managedNodes', 'managedNodes.address'],
+    });
+
+    const nodeCount = await managedNodeRepo.count({ where: { serverId: server.id } });
+
+    res.json({
+      id: refreshedServer!.id,
+      ipAddress: refreshedServer!.ipAddress,
+      isHealthy: refreshedServer!.isHealthy,
+      maxEdgeNodes: refreshedServer!.maxEdgeNodes,
+      currentNodeCount: nodeCount,
+      managedNodes: (refreshedServer!.managedNodes || []).map((node) => ({
+        id: node.id,
+        nodeId: node.nodeId,
+        address: node.address?.address,
+        summary: node.summary,
+        isRunning: node.isRunning,
+      })),
+      createdAt: refreshedServer!.createdAt,
+      updatedAt: refreshedServer!.updatedAt,
+    });
+  } catch (error: any) {
+    console.error('Error refreshing server:', error);
+    res.status(500).json({ error: error.message || 'Failed to refresh server' });
   }
 });
 
