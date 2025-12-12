@@ -75,7 +75,10 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
     uint256 private constant ONE = 1e18;
 
     /// @notice Maximum number of nodes that could be unstaked -> Revert
-    uint256 public MAX_NUMBER_OF_NODES_UNSTAKED = 50;
+    uint256 public maxNumberNodesUnstaked = 50;
+
+    /// @notice Maximum number of queue entries to be processed
+    uint256 public maxNumberQueueEntriesToProcess = 500;
     
     /// @notice Maps referral NFT token ID to referrer wallet address
     /// @dev Set by NFT holders to receive referral rewards
@@ -182,11 +185,20 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
      * @dev This is the maximum number of nodes that could be unstaked
      */
     function setMaxNumberOfNodesUnstaked(uint256 _maxNumberOfNodesUnstaked) public onlyRole(MANAGER_ROLE) {
-        MAX_NUMBER_OF_NODES_UNSTAKED = _maxNumberOfNodesUnstaked;
+        maxNumberNodesUnstaked = _maxNumberOfNodesUnstaked;
     }
 
     /**
-     * @notice Pauses all mint operations
+     * @notice Set Max Number of Queue Entries to be processed
+     * @param _maxNumberQueueEntriesToProcess Maximum number of queue entries to be processed
+     * @dev This is the maximum number of queue entries to be processed
+     */
+    function setMaxNumberQueueEntriesToProcess(uint256 _maxNumberQueueEntriesToProcess) public onlyRole(MANAGER_ROLE) {
+        maxNumberQueueEntriesToProcess = _maxNumberQueueEntriesToProcess;
+    }
+
+    /**
+     * @notice Parsially pauseing contract - all mint operations are paused
      * @dev Does not affect burns or withdrawals - allows users to exit but prevents new deposits
      */
     function pause() external onlyRole(MANAGER_ROLE) { _pause(); }
@@ -275,7 +287,7 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
 
         INodeManager nm = nodeManager;
 
-        require(!nm.moreThanMaxNodesUnstaked(MAX_NUMBER_OF_NODES_UNSTAKED), "HEALING_REQUIRED");
+        require(!nm.moreThanMaxNodesUnstaked(maxNumberNodesUnstaked), "HEALING_REQUIRED");
 
         uint256 feeTFuel = 0;
         if (totalSupply() > 0) {
@@ -305,7 +317,7 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
 
         INodeManager nm = nodeManager;
 
-        require(!nm.moreThanMaxNodesUnstaked(MAX_NUMBER_OF_NODES_UNSTAKED), "HEALING_REQUIRED");
+        require(!nm.moreThanMaxNodesUnstaked(maxNumberNodesUnstaked), "HEALING_REQUIRED");
 
         uint256 feeTFuel = (msg.value * mintFeeBps) / 10_000;
         uint256 netShares = _sharesForTFuel(msg.value - feeTFuel);
@@ -350,7 +362,7 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
 
         INodeManager nm = nodeManager;
         
-        require(!nm.moreThanMaxNodesUnstaked(MAX_NUMBER_OF_NODES_UNSTAKED), "HEALING_REQUIRED");
+        require(!nm.moreThanMaxNodesUnstaked(maxNumberNodesUnstaked), "HEALING_REQUIRED");
 
         uint256 tfuelAmount = _tfuelForShares(amount); // snapshot at burn time
         (uint256 index, uint256 readyAt, uint256 tip) = nm.requestWithdrawal(msg.sender, tfuelAmount);
@@ -373,7 +385,7 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
 
         INodeManager nm = nodeManager;
 
-        require(!nm.moreThanMaxNodesUnstaked(MAX_NUMBER_OF_NODES_UNSTAKED), "HEALING_REQUIRED");
+        require(!nm.moreThanMaxNodesUnstaked(maxNumberNodesUnstaked), "HEALING_REQUIRED");
 
         uint256 tfuelAmount = _tfuelForShares(amount);
         super.burnFrom(account, amount);
@@ -399,7 +411,7 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
 
         INodeManager nm = nodeManager;
 
-        require(!nm.moreThanMaxNodesUnstaked(MAX_NUMBER_OF_NODES_UNSTAKED), "HEALING_REQUIRED");
+        require(!nm.moreThanMaxNodesUnstaked(maxNumberNodesUnstaked), "HEALING_REQUIRED");
 
         uint256 tfuelAmount = _tfuelForShares(amount);
         uint256 directRedeemFee = (tfuelAmount * directRedeemFeeBps) / 10_000;
@@ -474,6 +486,7 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
      *      Processed withdrawals become credits users can claim.
      */
     function pokeQueue(uint256 maxItems) external nonReentrant {
+        require(maxItems <= maxNumberQueueEntriesToProcess, "MAX_ITEMS_EXCEEDED");
         nodeManager.processQueue(maxItems, msg.sender);
     }
 
@@ -486,7 +499,7 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
      * @dev Heals the system (partial)
      */
     function heal() external nonReentrant {
-        nodeManager.updateUnstakingNodes(MAX_NUMBER_OF_NODES_UNSTAKED);
+        nodeManager.updateUnstakingNodes(maxNumberNodesUnstaked);
     }
 
     // =============================================================================
@@ -516,7 +529,7 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
      * @return bool True if contract will needs healing
      */
     function willHeal() external view returns (bool) {
-        return nodeManager.moreThanMaxNodesUnstaked(MAX_NUMBER_OF_NODES_UNSTAKED);
+        return nodeManager.moreThanMaxNodesUnstaked(maxNumberNodesUnstaked);
     }
 
     // =============================================================================
