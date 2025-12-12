@@ -1,5 +1,5 @@
 'use client';
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Magic } from 'magic-sdk';
 import { ethers } from 'ethers';
 
@@ -40,6 +40,87 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [magic, setMagic] = useState<Magic | null>(null);
   const [currentChainId, setCurrentChainId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+
+  // Function to switch to supported network - defined early so it can be used in useEffects
+  const switchToSupportedNetwork = useCallback(async (): Promise<void> => {
+    try {
+      const appkit = (window as any).__REOWN_APPKIT__;
+      const chainIdHex = `0x${CHAIN_ID.toString(16)}`; // e.g., 0x16d for 365
+      
+      if (appkit?.switchChain) {
+        // Reown AppKit switchChain - try both number and hex string formats
+        try {
+          // Try with chain ID as number first
+          await appkit.switchChain({ chainId: CHAIN_ID });
+          console.log(`Switched to chain ${CHAIN_ID} using Reown AppKit`);
+          setCurrentChainId(CHAIN_ID);
+          return;
+        } catch (error1) {
+          try {
+            // Fallback: try with hex string
+            await appkit.switchChain({ chainId: chainIdHex });
+            console.log(`Switched to chain ${CHAIN_ID} using Reown AppKit (hex format)`);
+            setCurrentChainId(CHAIN_ID);
+            return;
+          } catch (error2) {
+            console.error('Reown AppKit switchChain failed with both formats:', error1, error2);
+            throw new Error('Failed to switch chain using Reown AppKit');
+          }
+        }
+      }
+      
+      // Fallback: try to switch using window.ethereum
+      if (typeof window !== 'undefined' && window.ethereum) {
+        try {
+          await (window.ethereum as any).request({
+            method: 'wallet_switchEthereumChain',
+            params: [{ chainId: chainIdHex }],
+          });
+          console.log(`Switched to chain ${CHAIN_ID} using wallet_switchEthereumChain`);
+          setCurrentChainId(CHAIN_ID);
+          return;
+        } catch (switchError: any) {
+          // If the chain doesn't exist, we might need to add it first
+          if (switchError.code === 4902) {
+            console.log('Chain not found in wallet, attempting to add it...');
+            try {
+              const rpcUrl = process.env.NEXT_PUBLIC_THETA_RPC_URL || 
+                (CHAIN_ID === 365 ? 'https://eth-rpc-api-testnet.thetatoken.org/rpc' : 'https://eth-rpc-api.thetatoken.org/rpc');
+              
+              await (window.ethereum as any).request({
+                method: 'wallet_addEthereumChain',
+                params: [{
+                  chainId: chainIdHex,
+                  chainName: CHAIN_ID === 365 ? 'Theta Testnet' : 'Theta Mainnet',
+                  nativeCurrency: {
+                    name: 'TFuel',
+                    symbol: 'TFuel',
+                    decimals: 18,
+                  },
+                  rpcUrls: [rpcUrl],
+                  blockExplorerUrls: CHAIN_ID === 365 
+                    ? ['https://testnet-explorer.thetatoken.org'] 
+                    : ['https://explorer.thetatoken.org'],
+                }],
+              });
+              console.log(`Added and switched to chain ${CHAIN_ID}`);
+              setCurrentChainId(CHAIN_ID);
+              return;
+            } catch (addError) {
+              console.error('Failed to add chain:', addError);
+              throw new Error('Failed to add or switch to supported network');
+            }
+          }
+          throw switchError;
+        }
+      }
+      
+      throw new Error('No method available to switch chain');
+    } catch (error: any) {
+      console.error('Error switching to supported network:', error);
+      throw error;
+    }
+  }, []);
 
   // Initialize WalletConnect listeners
   useEffect(() => {
@@ -117,7 +198,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         unsubscribe();
       }
     };
-  }, []);
+  }, [switchToSupportedNetwork]);
 
   // Check for existing sessions on mount
   useEffect(() => {
@@ -131,6 +212,65 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
           console.log('WalletConnect accounts:', accounts);
           if (accounts?.address) {
             console.log('Found existing WalletConnect session:', accounts.address);
+            
+            // Check if the session is on the correct chain
+            let sessionChainId: number | null = null;
+            
+            // Try to extract chain ID from caipAddress (format: eip155:CHAIN_ID:ADDRESS)
+            if (accounts.caipAddress) {
+              const match = accounts.caipAddress.match(/eip155:(\d+):/);
+              if (match) {
+                sessionChainId = parseInt(match[1], 10);
+                console.log('Detected session chain ID from caipAddress:', sessionChainId);
+              }
+            }
+            
+            // Also try to get chain ID from the provider
+            if (!sessionChainId) {
+              try {
+                const provider = getProvider();
+                if (provider) {
+                  const network = await provider.getNetwork();
+                  sessionChainId = Number(network.chainId);
+                  console.log('Detected session chain ID from provider:', sessionChainId);
+                }
+              } catch (error) {
+                console.error('Error getting chain ID from provider:', error);
+              }
+            }
+            
+            // If session is on wrong chain, switch to correct chain
+            if (sessionChainId && sessionChainId !== CHAIN_ID) {
+              console.log(`Session is on chain ${sessionChainId}, but app requires chain ${CHAIN_ID}. Switching chain...`);
+              try {
+                await switchToSupportedNetwork();
+                // Wait a bit for the switch to complete
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                // Re-check the chain ID
+                const newProvider = getProvider();
+                if (newProvider) {
+                  const newNetwork = await newProvider.getNetwork();
+                  const newChainId = Number(newNetwork.chainId);
+                  console.log('Chain switched to:', newChainId);
+                  if (newChainId !== CHAIN_ID) {
+                    console.warn(`Chain switch may have failed. Expected ${CHAIN_ID}, got ${newChainId}`);
+                  }
+                }
+              } catch (error) {
+                console.error('Failed to switch chain for existing session:', error);
+                // If switch fails, disconnect the session so user can reconnect on correct chain
+                console.log('Disconnecting session to allow reconnection on correct chain...');
+                try {
+                  await appkit.disconnect();
+                  setUser(null);
+                  setLoading(false);
+                  return;
+                } catch (disconnectError) {
+                  console.error('Error disconnecting session:', disconnectError);
+                }
+              }
+            }
+            
             setUser({
               address: accounts.address,
               balance: '0',
@@ -216,7 +356,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     return () => {
       clearInterval(interval);
     };
-  }, [user?.isConnected]);
+  }, [user?.isConnected, switchToSupportedNetwork]);
 
   const loginWithWalletConnect = async () => {
     try {
@@ -393,39 +533,6 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
     
     return null;
-  };
-
-  const switchToSupportedNetwork = async (): Promise<void> => {
-    try {
-      const appkit = (window as any).__REOWN_APPKIT__;
-      if (appkit?.switchChain) {
-        // Try to switch to testnet first (preferred for development)
-        try {
-          await appkit.switchChain({ chainId: CHAIN_ID.toString(16) }); // 365 in hex
-          setCurrentChainId(CHAIN_ID);
-          return;
-        } catch (testnetError) {
-          throw new Error('Failed to switch to any supported network');
-        }
-      } else {
-        // Fallback: try to switch using window.ethereum
-        if (typeof window !== 'undefined' && window.ethereum) {
-          try {
-            await (window.ethereum as any).request({
-              method: 'wallet_switchEthereumChain',
-              params: [{ chainId: CHAIN_ID.toString(16) }], // 365 in hex
-            });
-            setCurrentChainId(CHAIN_ID);
-            return;
-          } catch (testnetError) {
-            throw new Error('Failed to switch to any supported network');
-          }
-        }
-      }
-    } catch (error: any) {
-      console.error('Error switching to supported network:', error);
-      throw error;
-    }
   };
 
   // Function to get current chain ID
