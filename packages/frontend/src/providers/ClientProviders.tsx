@@ -3,6 +3,7 @@ import { ApolloProvider } from '@apollo/client/react';
 import { Toaster } from 'react-hot-toast';
 import { apolloClient } from '@/lib/apolloClient';
 import { AuthProvider } from '@/contexts/AuthContext';
+import { AdminProvider } from '@/contexts/AdminContext';
 import { ReownProvider } from '@/providers/ReownProvider';
 
 interface ClientProvidersProps {
@@ -14,6 +15,7 @@ export const ClientProviders = ({ children }: ClientProvidersProps) => {
     <ApolloProvider client={apolloClient}>
       <ReownProvider>
         <AuthProvider>
+          <AdminProvider>
           {children}
           <Toaster
             position="top-right"
@@ -40,6 +42,7 @@ export const ClientProviders = ({ children }: ClientProvidersProps) => {
               },
             }}
           />
+          </AdminProvider>
         </AuthProvider>
       </ReownProvider>
     </ApolloProvider>

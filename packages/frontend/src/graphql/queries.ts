@@ -234,3 +234,31 @@ export const GET_REDEMPTION_QUEUE_FOR_KEEPER = gql`
     }
   }
 `;
+
+export const GET_EDGE_NODE_BY_ADDRESS = gql`
+  query GetEdgeNodeByAddress($address: String!) {
+    edgeNode(address: $address) {
+      id
+      address {
+        address
+      }
+      registrationBlock
+      registrationTimestamp
+      isActive
+      deactivationBlock
+      deactivationTimestamp
+      isFaulty
+      faultyBlock
+      faultyTimestamp
+      recoveryBlock
+      recoveryTimestamp
+      totalStaked
+      totalUnstaked
+      unstakeBlock
+      nodeType
+      isLive
+      createdAt
+      updatedAt
+    }
+  }
+`;
