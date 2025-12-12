@@ -39,6 +39,8 @@ interface INodeManager {
     function canDirectRedeem(uint256 amount) external view returns (bool canRedeem, uint256 availableLiquidity);
     function directRedeem(address user, uint256 amount) external;
     function userTFuelCredits(address user) external view returns (uint256);
+    function moreThanMaxNodesUnstaked(uint256 maxNodes) external view returns (bool);
+    function updateUnstakingNodes(uint256 maxNodes) external;
 }
 
 interface ITNT721 {
@@ -71,6 +73,9 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
     
     /// @notice Precision constant for PPS calculations (1e18)
     uint256 private constant ONE = 1e18;
+
+    /// @notice Maximum number of nodes that could be unstaked -> Revert
+    uint256 public MAX_NUMBER_OF_NODES_UNSTAKED = 50;
     
     /// @notice Maps referral NFT token ID to referrer wallet address
     /// @dev Set by NFT holders to receive referral rewards
@@ -172,6 +177,15 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
     }
 
     /**
+     * @notice Set Max Number of Nodes Unstaked
+     * @param _maxNumberOfNodesUnstaked Maximum number of nodes that could be unstaked
+     * @dev This is the maximum number of nodes that could be unstaked
+     */
+    function setMaxNumberOfNodesUnstaked(uint256 _maxNumberOfNodesUnstaked) public onlyRole(MANAGER_ROLE) {
+        MAX_NUMBER_OF_NODES_UNSTAKED = _maxNumberOfNodesUnstaked;
+    }
+
+    /**
      * @notice Pauses all mint operations
      * @dev Does not affect burns or withdrawals - allows users to exit but prevents new deposits
      */
@@ -194,11 +208,27 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
      *      - Increases as fees accumulate (unminted fee shares increase PPS)
      *      - Increases as staking rewards accrue
      */
-    function pps() external view returns (uint256) {
+    function pps() public view returns (uint256) {
         uint256 ts = totalSupply();
         if (ts == 0) return 0.1e18; // bootstrap: 1 TFuel = 10 sTFuel
         uint256 netAssets = nodeManager.getNetAssetsBackingShares();
         return (netAssets * ONE) / ts;
+    }
+
+    /**
+     * @notice Calculates the current Price Per Share (PPS) in TFuel (with safe AssetsBackingShares function)
+     * @return Price per share scaled by 1e18 (e.g., 0.1e18 = 0.1 TFuel per share)
+     * @dev PPS = totalNetAssets / totalSupply
+     *      - Bootstrap value: 0.1e18 (1 TFuel = 10 sTFuel) when supply is zero
+     *      - Increases as fees accumulate (unminted fee shares increase PPS)
+     *      - Increases as staking rewards accrue
+     *      -> *Important*: this function only returns accurate values if all unstaked nodes have been processed
+     */
+    function ppsSafe() public view returns (uint256) {
+        uint256 ts = totalSupply();
+        if (ts == 0) return (0.1e18); // bootstrap: 1 TFuel = 10 sTFuel
+        (uint256 netAssets, ) = nodeManager.getNetAssetsBackingSharesSafe();
+        return ((netAssets * ONE) / ts);
     }
 
     /**
@@ -243,13 +273,17 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
     function mint() external payable whenNotPaused nonReentrant {
         require(msg.value > 0, "NO_TFUEL");
 
+        INodeManager nm = nodeManager;
+
+        require(!nm.moreThanMaxNodesUnstaked(MAX_NUMBER_OF_NODES_UNSTAKED), "HEALING_REQUIRED");
+
         uint256 feeTFuel = 0;
         if (totalSupply() > 0) {
             feeTFuel = (msg.value * mintFeeBps) / 10_000;
         }
         uint256 netShares = _sharesForTFuel(msg.value - feeTFuel);
 
-        nodeManager.depositTFuel{value: msg.value}();
+        nm.depositTFuel{value: msg.value}();
         _mint(msg.sender, netShares);
 
         emit Minted(msg.sender, msg.value, netShares, feeTFuel);
@@ -268,7 +302,11 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
         require(referrer != address(0), "ZERO_REFERRAL_ADDRESS");
         require(referrer != msg.sender, "SELF_REFERRAL");
         require(msg.value > 0, "NO_TFUEL");
-        
+
+        INodeManager nm = nodeManager;
+
+        require(!nm.moreThanMaxNodesUnstaked(MAX_NUMBER_OF_NODES_UNSTAKED), "HEALING_REQUIRED");
+
         uint256 feeTFuel = (msg.value * mintFeeBps) / 10_000;
         uint256 netShares = _sharesForTFuel(msg.value - feeTFuel);
 
@@ -309,8 +347,13 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
     function burn(uint256 amount) public override nonReentrant {
         require(amount > 0, "ZERO");
         require(balanceOf(msg.sender) >= amount, "INSUFFICIENT_BALANCE");
+
+        INodeManager nm = nodeManager;
+        
+        require(!nm.moreThanMaxNodesUnstaked(MAX_NUMBER_OF_NODES_UNSTAKED), "HEALING_REQUIRED");
+
         uint256 tfuelAmount = _tfuelForShares(amount); // snapshot at burn time
-        (uint256 index, uint256 readyAt, uint256 tip) = nodeManager.requestWithdrawal(msg.sender, tfuelAmount);
+        (uint256 index, uint256 readyAt, uint256 tip) = nm.requestWithdrawal(msg.sender, tfuelAmount);
         super.burn(amount);
         uint256 netToUser = tfuelAmount - tip;
         emit BurnQueued(msg.sender, amount, netToUser, readyAt, tip, index);
@@ -327,9 +370,14 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
         require(amount > 0, "ZERO");
         require(balanceOf(account) >= amount, "INSUFFICIENT_BALANCE");
         require(allowance(account, msg.sender) >= amount, "NO_ALLOWANCE");
+
+        INodeManager nm = nodeManager;
+
+        require(!nm.moreThanMaxNodesUnstaked(MAX_NUMBER_OF_NODES_UNSTAKED), "HEALING_REQUIRED");
+
         uint256 tfuelAmount = _tfuelForShares(amount);
         super.burnFrom(account, amount);
-        (uint256 index, uint256 readyAt, uint256 tip) = nodeManager.requestWithdrawal(account, tfuelAmount);
+        (uint256 index, uint256 readyAt, uint256 tip) = nm.requestWithdrawal(account, tfuelAmount);
         uint256 netToUser = tfuelAmount - tip;
         emit BurnQueued(account, amount, netToUser, readyAt, tip, index);
     }
@@ -350,7 +398,9 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
         require(balanceOf(msg.sender) >= amount, "INSUFFICIENT_BALANCE");
 
         INodeManager nm = nodeManager;
-        
+
+        require(!nm.moreThanMaxNodesUnstaked(MAX_NUMBER_OF_NODES_UNSTAKED), "HEALING_REQUIRED");
+
         uint256 tfuelAmount = _tfuelForShares(amount);
         uint256 directRedeemFee = (tfuelAmount * directRedeemFeeBps) / 10_000;
         uint256 netTfuelAmount = tfuelAmount - directRedeemFee;
@@ -428,6 +478,18 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
     }
 
     // =============================================================================
+    // Heal FUNCTIONS
+    // =============================================================================
+
+    /**
+     * @notice Heals the system (partial)
+     * @dev Heals the system (partial)
+     */
+    function heal() external nonReentrant {
+        nodeManager.updateUnstakingNodes(MAX_NUMBER_OF_NODES_UNSTAKED);
+    }
+
+    // =============================================================================
     // VIEW FUNCTIONS
     // =============================================================================
 
@@ -447,6 +509,14 @@ contract sTFuel is ERC20, ERC20Burnable, AccessControl, ReentrancyGuard, Pausabl
      */
     function userCredits(address user) external view returns (uint256) {
         return nodeManager.userTFuelCredits(user);
+    }
+
+    /**
+     * @notice Returns true if contract will revert on next minting or burning -> needs healing
+     * @return bool True if contract will needs healing
+     */
+    function willHeal() external view returns (bool) {
+        return nodeManager.moreThanMaxNodesUnstaked(MAX_NUMBER_OF_NODES_UNSTAKED);
     }
 
     // =============================================================================

@@ -31,7 +31,10 @@ contract NodeManager is AccessControl, ReentrancyGuard {
     // CONSTANTS & ENUMS
     // =============================================================================
 
-    /// @notice Role identifier for contract managers
+    /// @notice Role identifier for node manager
+    bytes32 public constant NODE_MANAGER_ROLE = keccak256("NODE_MANAGER_ROLE");
+
+    /// @notice Role identifier for manager (Fee and Settings)
     bytes32 public constant MANAGER_ROLE = keccak256("MANAGER_ROLE");
 
     /// @notice Minimum stake amount per node (10,000 TFuel)
@@ -39,6 +42,15 @@ contract NodeManager is AccessControl, ReentrancyGuard {
     
     /// @notice Cooldown period for unstaking (28,800 blocks ≈ 3 days on Theta)
     uint64 public constant COOLDOWN_PERIOD = 28_800;
+
+    /// @notice Theta mainnet chain id
+    uint256 public constant THETA_MAINNET = 361;
+
+    /// @notice Theta testnet chain id
+    uint256 public constant THETA_TESTNET = 365;
+
+    /// @notice Maximum unstaking processing per call
+    uint256 public constant MAX_UNSTAKE_PROCESSING_PER_CALL = 50;
 
     /// @notice Node capacity types
     enum NodeType { 
@@ -84,6 +96,9 @@ contract NodeManager is AccessControl, ReentrancyGuard {
     
     /// @notice Maximum nodes to stake in one call
     uint16 public maxNodesPerStakingCall = 50;
+
+    /// @notice Maximum number of nodes undstaking per call
+    uint256 public maxNodesUnstakingPerCall = 50;
 
     // =============================================================================
     // LIQUIDITY TRACKING
@@ -222,7 +237,7 @@ contract NodeManager is AccessControl, ReentrancyGuard {
 
     event NodeRegistered(address indexed node, NodeType nodeType);
     event NodeDeactivated(address indexed node);
-    event KeeperCredited(address indexed keeper, uint256 tipPaid, uint256 tipTotalProcessed); // update -> needs also update in backend code tipPaid -> tipCredited
+    event KeeperCredited(address indexed keeper, uint256 tipCredited, uint256 tipTotalProcessed); // update -> needs also update in backend code tipPaid -> tipCredited
     event TFuelStaked(address indexed node, uint256 amount);
     event TFuelUnstaked(address indexed node, uint256 amount);
     event ParamsUpdated(uint16 keeperTipBps, uint256 keeperTipMax);
@@ -234,6 +249,7 @@ contract NodeManager is AccessControl, ReentrancyGuard {
     event FaultyNodeRecovered(address indexed node, uint256 amount);
     event KeeperTipSurplus(uint256 amount);
     event CurrentNetAssets(uint256 netAssets, bool isExact);
+    event TFuelReceived(address indexed from, uint256 amount, bool isFallback);
 
     // =============================================================================
     // MODIFIERS
@@ -252,13 +268,19 @@ contract NodeManager is AccessControl, ReentrancyGuard {
     /**
      * @notice Initializes the NodeManager contract
      * @param _sTFuel Address of the sTFuel contract
+     * @param _defaultAdmin Address of the default admin
+     * @param _nodeManager Address of the node manager
      * @dev Sets up access control and initializes the contract
      */
-    constructor(address _sTFuel) {
+    constructor(address _sTFuel, address _defaultAdmin, address _nodeManager) {
+        // Only allow deployment on Theta mainnet or testnet
+        require(block.chainid == THETA_MAINNET || block.chainid == THETA_TESTNET, "INVALID_CHAIN");
         require(_sTFuel != address(0), "sTFUEL_ZERO");
+        require(_nodeManager != address(0), "NODE_MANAGER_ZERO");
         sTFuel = _sTFuel;
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
+        _grantRole(DEFAULT_ADMIN_ROLE, _defaultAdmin);
         _grantRole(MANAGER_ROLE, msg.sender);
+        _grantRole(NODE_MANAGER_ROLE, _nodeManager);
     }
 
     // =============================================================================
@@ -266,10 +288,16 @@ contract NodeManager is AccessControl, ReentrancyGuard {
     // =============================================================================
 
     /// @notice Allows contract to receive TFuel
-    receive() external payable {}
-
+    receive() external payable {
+        emit TFuelReceived(msg.sender, msg.value, false);
+    }
     /// @notice Fallback function for any other calls
-    fallback() external payable {}
+    fallback() external payable {
+        if (msg.value > 0) {
+            emit TFuelReceived(msg.sender, msg.value, true);
+        }
+    }
+
 
     // =============================================================================
     // ADMIN FUNCTIONS (EXTERNAL)
@@ -338,13 +366,13 @@ contract NodeManager is AccessControl, ReentrancyGuard {
      * @param nodeAddress Address of the node
      * @param nodeType Type/capacity of the node
      * @param eenSummary 261-byte EEN holder summary
-     * @dev Only callable by MANAGER_ROLE
+     * @dev Only callable by NODE_MANAGER_ROLE
      */
     function registerNode(
         address nodeAddress,
         NodeType nodeType,
         bytes calldata eenSummary
-    ) external onlyRole(MANAGER_ROLE) nonReentrant {
+    ) external onlyRole(NODE_MANAGER_ROLE) nonReentrant {
         require(nodeAddress != address(0), "NODE_ZERO");
         NodeInfo storage exist = _nodes[nodeAddress];
         require(!exist.isActive, "ALREADY");
@@ -378,9 +406,9 @@ contract NodeManager is AccessControl, ReentrancyGuard {
     /**
      * @notice Deactivates a node
      * @param nodeAddress Address of the node to deactivate
-     * @dev Only callable by MANAGER_ROLE
+     * @dev Only callable by NODE_MANAGER_ROLE
      */
-    function deactivateNode(address nodeAddress) external onlyRole(MANAGER_ROLE) nonReentrant {
+    function deactivateNode(address nodeAddress) external onlyRole(NODE_MANAGER_ROLE) nonReentrant {
         NodeInfo storage node = _nodes[nodeAddress];
         require(node.isActive, "NOT_ACTIVE");
         if (node.bucket != Bucket.None && node.bucket != Bucket.Unstake) {
@@ -399,21 +427,24 @@ contract NodeManager is AccessControl, ReentrancyGuard {
      * @notice Gets node information for manager
      * @param nodeAddress Address of the node
      * @return NodeInfo struct containing all node data
-     * @dev Only callable by MANAGER_ROLE
+     * @dev Only callable by NODE_MANAGER_ROLE
      */
-    function getNodeInfoForManager(address nodeAddress) external view onlyRole(MANAGER_ROLE) returns (NodeInfo memory) {
+    function getNodeInfoForManager(address nodeAddress) external view onlyRole(NODE_MANAGER_ROLE) returns (NodeInfo memory) {
         return _nodes[nodeAddress];
     }
 
     /**
      * @notice Retries unstaking for a faulty node
      * @param nodeAddress Address of the faulty node
-     * @dev Only callable by MANAGER_ROLE
+     * @dev Only callable by NODE_MANAGER_ROLE
      */
-    function retryFaultyNodeUnstake(address nodeAddress) external onlyRole(MANAGER_ROLE) nonReentrant {
+    function retryFaultyNodeUnstake(address nodeAddress) external onlyRole(NODE_MANAGER_ROLE) nonReentrant {
         require(isFaultyStakedNode[nodeAddress], "NOT_FAULTY");
         
         NodeInfo storage node = _nodes[nodeAddress];
+
+        require(!_isInUnstakeQ[nodeAddress], "ALREADY_IN_UNSTAKE_Q");
+
         uint256 lot = node.stakedTFuel;
         require(lot > 0, "NO_STAKED_TFUEL");
         
@@ -513,10 +544,11 @@ contract NodeManager is AccessControl, ReentrancyGuard {
      * @dev Only callable by sTFuel contract
      */
     function claimHeadIfReady(address user) external onlySTFuel nonReentrant returns (bool paid, uint256 amountPaid, uint256 index) {
-        _updateUnstakingNodes(_uLength());
+        bool isUpToDate = _updateUnstakingNodes(maxNodesUnstakingPerCall);
+        uint wqHeadIndex = wqHead;
 
-        if (wqHead >= wq.length) return (false, 0, 0);
-        Req memory r = wq[wqHead];
+        if (wqHeadIndex >= wq.length) return (false, 0, 0);
+        Req memory r = wq[wqHeadIndex];
         if (r.user != user) return (false, 0, 0);
         if (block.number < r.readyAt) return (false, 0, 0);
         if (address(this).balance < r.amount) return (false, 0, 0);
@@ -526,7 +558,7 @@ contract NodeManager is AccessControl, ReentrancyGuard {
         totalTipsOutstandingEstimate = _saturatingSub(totalTipsOutstandingEstimate, uint256(r.keeperTip));
 
         // Payout user
-        delete wq[wqHead];
+        delete wq[wqHeadIndex];
         unchecked { wqHead++; }
 
         if (wqHead >= wq.length) {
@@ -536,15 +568,16 @@ contract NodeManager is AccessControl, ReentrancyGuard {
 
         _pay(r.user, r.amount);
 
-        _checkAndStakeTFuel();
-
-        lastBalance = address(this).balance;
+        if(isUpToDate) {
+            _checkAndStakeTFuel();
+            lastBalance = address(this).balance;
+        }
 
         // Emit current net assets backing shares after payout
         (uint256 netAssets, bool isExact) = _getNetAssetsBackingSharesSafe();
         emit CurrentNetAssets(netAssets, isExact);
 
-        return (true, r.amount, wqHead - 1);
+        return (true, r.amount, wqHeadIndex);
     }
 
     /**
@@ -571,7 +604,7 @@ contract NodeManager is AccessControl, ReentrancyGuard {
      * @dev Only callable by sTFuel contract
      */
     function withdrawCredits(address to) external nonReentrant onlySTFuel returns (uint256 amount) {
-        _updateUnstakingNodes(_uLength());
+        bool isUpToDate = _updateUnstakingNodes(maxNodesUnstakingPerCall);
 
         amount = userTFuelCredits[to];
         require(amount > 0, "NO_CREDITS");
@@ -583,7 +616,8 @@ contract NodeManager is AccessControl, ReentrancyGuard {
         
         // Transfer TFuel to user
         _pay(to, amount);
-        lastBalance = address(this).balance;
+        
+        if(isUpToDate)lastBalance = address(this).balance;
 
         // Emit current net assets backing shares after payout
         (uint256 netAssets, bool isExact) = _getNetAssetsBackingSharesSafe();
@@ -593,6 +627,35 @@ contract NodeManager is AccessControl, ReentrancyGuard {
     // =============================================================================
     // PUBLIC FUNCTIONS
     // =============================================================================
+
+    /**
+     * @notice Checks if more than `maxNodes` unstake lots have matured
+     * @dev O(1) check. Uses FIFO ordering of the unstake queue.
+     * 
+     * Logic:
+     * - If no matured nodes exist → return false
+     * - If unstake queue length <= maxNodes → impossible to exceed limit → return false
+     * - Let P = head + maxNodes
+     *   If node at P has cooldownBlockEnd <= block.number → at least maxNodes+1 matured → return true
+     *   Else → return false
+     */
+    function moreThanMaxNodesUnstaked(uint256 maxNodes) external view returns (bool) {
+        // If nothing matured yet or unstake queue length <= maxNodes → safe
+        if (nextUnstakeBlock == 0 || block.number < nextUnstakeBlock || _uLength() <= maxNodes) {
+            return false;
+        }
+
+        // Position to check (0-based offset)
+        uint256 pos = _uHead + maxNodes;
+
+        address nodeAddr = _unstakeQ[pos];
+        if (nodeAddr == address(0)) return false; // defensive
+
+        NodeInfo storage nd = _nodes[nodeAddr];
+
+        // If this node is matured → more than maxNodes matured → healing needed
+        return (block.number >= nd.cooldownBlockEnd);
+    }
 
     /**
      * @notice Stakes any excess liquid TFuel above a small buffer into nodes
@@ -612,8 +675,8 @@ contract NodeManager is AccessControl, ReentrancyGuard {
     function updateUnstakingNodes(uint256 maxNodes) external nonReentrant {
         uint256 len = _uLength();
         if (maxNodes > len) maxNodes = len;
-        _updateUnstakingNodes(maxNodes);
-        lastBalance = address(this).balance;
+        bool isUpToDate = _updateUnstakingNodes(maxNodes);
+        if(isUpToDate) lastBalance = address(this).balance;
     }
 
     /**
@@ -655,8 +718,7 @@ contract NodeManager is AccessControl, ReentrancyGuard {
      * @dev Anyone can call this to process the withdrawal queue
      */
     function processQueue(uint256 maxItems, address keeperAddress) external nonReentrant {
-        _updateUnstakingNodes(_uLength());
-        _checkAndStakeTFuel();
+        bool isUpToDate = _updateUnstakingNodes(maxNodesUnstakingPerCall);
 
         uint256 processed;
         uint256 tipsToProcess; // full tips for processed items (deducted from totalTipsOutstandingEstimate)
@@ -700,7 +762,10 @@ contract NodeManager is AccessControl, ReentrancyGuard {
             if (tipsToProcess - toCredit > 0) {
                 emit KeeperTipSurplus(tipsToProcess - toCredit);
             }
-            lastBalance = address(this).balance;
+            if(isUpToDate) {
+                _checkAndStakeTFuel();
+                lastBalance = address(this).balance;
+            }
         }
     }
     
@@ -1033,10 +1098,11 @@ contract NodeManager is AccessControl, ReentrancyGuard {
     /**
      * @notice Updates matured unstaking nodes (bounded by maxNodes)
      * @param maxNodes Maximum number of nodes to update
+     * @return isUpToDate True if the unstaking queue is up to date
      */
-    function _updateUnstakingNodes(uint256 maxNodes) internal {
-        if (_uIsEmpty()) { nextUnstakeBlock = 0; return; }
-        if (nextUnstakeBlock != 0 && block.number < nextUnstakeBlock) return;
+    function _updateUnstakingNodes(uint256 maxNodes) internal returns (bool isUpToDate) {
+        if (_uIsEmpty()) { nextUnstakeBlock = 0; return true; }
+        if (nextUnstakeBlock != 0 && block.number < nextUnstakeBlock) return true;
 
         uint256 processed;
         while (processed < maxNodes && !_uIsEmpty()) {
@@ -1068,8 +1134,10 @@ contract NodeManager is AccessControl, ReentrancyGuard {
         if (!_uIsEmpty()) {
             (address b, ) = _uPeek();
             nextUnstakeBlock = _nodes[b].cooldownBlockEnd;
+            return block.number < nextUnstakeBlock;
         } else {
             nextUnstakeBlock = 0;
+            return true;
         }
     }
 
