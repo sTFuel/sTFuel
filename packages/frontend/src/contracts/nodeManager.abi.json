@@ -165,7 +165,7 @@
 			{
 				"indexed": false,
 				"internalType": "uint256",
-				"name": "tipPaid",
+				"name": "tipCredited",
 				"type": "uint256"
 			},
 			{
