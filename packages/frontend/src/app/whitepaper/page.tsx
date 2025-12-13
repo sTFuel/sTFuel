@@ -153,6 +153,27 @@ export default function WhitePaperPage() {
         </div>
       </section>
 
+      {/* Explainer Video Section */}
+      <section className="text-center">
+        <div className="flex flex-col items-center gap-6">
+          <h2 className="text-white text-3xl font-bold">
+            How sTFuel Works
+          </h2>
+          <div className="w-full max-w-4xl">
+            <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
+              <iframe
+                src="https://player.vimeo.com/video/1141297449"
+                className="absolute top-0 left-0 w-full h-full rounded-lg"
+                frameBorder="0"
+                allow="autoplay; fullscreen; picture-in-picture"
+                allowFullScreen
+                title="sTFuel Explainer Video"
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Key Facts Section */}
       <section>
         <div className="flex flex-col gap-8">
