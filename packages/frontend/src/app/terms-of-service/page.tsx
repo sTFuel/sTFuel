@@ -9,7 +9,7 @@ export default function TermsOfServicePage() {
           Terms of Service
         </h1>
         <p className="text-text-secondary-dark text-base font-normal leading-normal md:text-lg text-gray-color">
-          Last updated: {new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })}
+          Last updated: December 13, 2025
         </p>
       </section>
 
