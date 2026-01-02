@@ -39,6 +39,13 @@ COPY --from=builder /app/src/graphql/schema.graphql ./dist/graphql/schema.graphq
 COPY --from=builder /app/src/contracts/nodeManager.abi.json ./dist/contracts/nodeManager.abi.json
 COPY --from=builder /app/src/contracts/stfuel.abi.json ./dist/contracts/stfuel.abi.json
 
+# Copy .env file from build context if it exists (optional)
+# Runtime environment variables (via -e or --env-file) will override .env values
+# If .env doesn't exist in build context, comment out the line below and use --env-file at runtime
+# To include .env in image: ensure .env exists and is not excluded in .dockerignore
+# To exclude .env from image: keep .env in .dockerignore (default) and use --env-file at runtime
+COPY .env .env
+
 # Create non-root user for security
 RUN addgroup -g 1001 -S nodejs && \
     adduser -S nodejs -u 1001

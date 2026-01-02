@@ -145,14 +145,50 @@ All environment variables from `env.example` must be provided when running the c
 
 ### Using Environment File
 
-Alternatively, use an environment file:
+There are two ways to provide environment variables:
+
+**Option 1: Include .env in Docker image (for convenience)**
+- Ensure `.env` file exists in the build context (not excluded in `.dockerignore`)
+- The `.env` file will be copied into the image during build
+- Runtime environment variables (via `-e` or `--env-file`) will override values from the image's `.env` file
+
 ```bash
+# Build with .env file included
+docker build -t stfuel-backend:latest -f packages/backend/Dockerfile packages/backend/
+
+# Run (can still override with -e flags)
+docker run -d \
+  --name stfuel-backend \
+  -p 4000:4000 \
+  stfuel-backend:latest
+```
+
+**Option 2: Use --env-file at runtime (recommended for production)**
+- Exclude `.env` from build (it's excluded by default in `.dockerignore`)
+- Pass environment variables at container startup
+- More secure as secrets aren't baked into the image
+
+```bash
+# Build without .env (default)
+docker build -t stfuel-backend:latest -f packages/backend/Dockerfile packages/backend/
+
+# Run with environment file
 docker run -d \
   --name stfuel-backend \
   -p 4000:4000 \
   --env-file .env \
   stfuel-backend:latest
+
+# Or use individual -e flags
+docker run -d \
+  --name stfuel-backend \
+  -p 4000:4000 \
+  -e DATABASE_URL="postgresql://..." \
+  -e THETA_RPC_URLS="https://..." \
+  stfuel-backend:latest
 ```
+
+**Note:** Runtime environment variables (via `-e` or `--env-file`) always take precedence over any `.env` file in the image.
 
 ### Health Checks
 

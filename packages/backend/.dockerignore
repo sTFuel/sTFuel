@@ -8,7 +8,9 @@ yarn-error.log*
 dist/
 
 # Environment files
-.env
+# Note: .env is commented out to allow copying .env files into the image
+# Uncomment the line below if you want to exclude .env files for security
+# .env
 .env.local
 .env.*.local
 
