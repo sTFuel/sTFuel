@@ -7,7 +7,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install all dependencies (including dev dependencies for build)
-RUN npm ci --only=production=false
+# If package-lock.json doesn't exist, npm ci will fail, so we use npm install as fallback
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
 # Copy TypeScript config
 COPY tsconfig.json ./
@@ -27,7 +28,8 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install only production dependencies
-RUN npm ci --only=production && npm cache clean --force
+# If package-lock.json doesn't exist, npm ci will fail, so we use npm install as fallback
+RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi && npm cache clean --force
 
 # Copy compiled code from builder
 COPY --from=builder /app/dist ./dist
@@ -41,9 +43,8 @@ COPY --from=builder /app/src/contracts/stfuel.abi.json ./dist/contracts/stfuel.a
 
 # Copy .env file from build context if it exists (optional)
 # Runtime environment variables (via -e or --env-file) will override .env values
-# If .env doesn't exist in build context, comment out the line below and use --env-file at runtime
-# To include .env in image: ensure .env exists and is not excluded in .dockerignore
-# To exclude .env from image: keep .env in .dockerignore (default) and use --env-file at runtime
+# Note: If .env doesn't exist in build context, comment out the line below
+# The application will use runtime environment variables instead
 COPY .env .env
 
 # Create non-root user for security
