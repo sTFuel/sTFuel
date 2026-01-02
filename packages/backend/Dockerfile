@@ -14,31 +14,29 @@ RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 # The backend tsconfig extends the root one, so we create a standalone version
 COPY tsconfig.json ./tsconfig.backend.json
 # Create standalone tsconfig.json with all necessary options
-RUN cat > tsconfig.json << 'EOF'
-{
-  "compilerOptions": {
-    "target": "ES2022",
-    "module": "commonjs",
-    "lib": ["ES2022"],
-    "outDir": "./dist",
-    "rootDir": "./src",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "resolveJsonModule": true,
-    "declaration": true,
-    "declarationMap": true,
-    "sourceMap": true,
-    "experimentalDecorators": true,
-    "emitDecoratorMetadata": true,
-    "strictPropertyInitialization": false,
-    "types": ["node"]
-  },
-  "include": ["src/**/*"],
-  "exclude": ["node_modules", "dist", "**/*.test.ts"]
-}
-EOF
+RUN echo '{' > tsconfig.json && \
+    echo '  "compilerOptions": {' >> tsconfig.json && \
+    echo '    "target": "ES2022",' >> tsconfig.json && \
+    echo '    "module": "commonjs",' >> tsconfig.json && \
+    echo '    "lib": ["ES2022"],' >> tsconfig.json && \
+    echo '    "outDir": "./dist",' >> tsconfig.json && \
+    echo '    "rootDir": "./src",' >> tsconfig.json && \
+    echo '    "strict": true,' >> tsconfig.json && \
+    echo '    "esModuleInterop": true,' >> tsconfig.json && \
+    echo '    "skipLibCheck": true,' >> tsconfig.json && \
+    echo '    "forceConsistentCasingInFileNames": true,' >> tsconfig.json && \
+    echo '    "resolveJsonModule": true,' >> tsconfig.json && \
+    echo '    "declaration": true,' >> tsconfig.json && \
+    echo '    "declarationMap": true,' >> tsconfig.json && \
+    echo '    "sourceMap": true,' >> tsconfig.json && \
+    echo '    "experimentalDecorators": true,' >> tsconfig.json && \
+    echo '    "emitDecoratorMetadata": true,' >> tsconfig.json && \
+    echo '    "strictPropertyInitialization": false,' >> tsconfig.json && \
+    echo '    "types": ["node"]' >> tsconfig.json && \
+    echo '  },' >> tsconfig.json && \
+    echo '  "include": ["src/**/*"],' >> tsconfig.json && \
+    echo '  "exclude": ["node_modules", "dist", "**/*.test.ts"]' >> tsconfig.json && \
+    echo '}' >> tsconfig.json
 
 # Copy source code
 COPY src/ ./src/
