@@ -10,8 +10,35 @@ COPY package*.json ./
 # If package-lock.json doesn't exist, npm ci will fail, so we use npm install as fallback
 RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 
-# Copy TypeScript config
-COPY tsconfig.json ./
+# Copy TypeScript config and create standalone version
+# The backend tsconfig extends the root one, so we create a standalone version
+COPY tsconfig.json ./tsconfig.backend.json
+# Create standalone tsconfig.json with all necessary options
+RUN cat > tsconfig.json << 'EOF'
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "outDir": "./dist",
+    "rootDir": "./src",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "strictPropertyInitialization": false,
+    "types": ["node"]
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "**/*.test.ts"]
+}
+EOF
 
 # Copy source code
 COPY src/ ./src/
