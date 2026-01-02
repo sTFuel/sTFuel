@@ -94,6 +94,103 @@ npm run build
 npm start
 ```
 
+## Docker
+
+### Building the Docker Image
+
+Build the Docker image:
+```bash
+docker build -t stfuel-backend:latest -f packages/backend/Dockerfile packages/backend/
+```
+
+### Running the Container
+
+Run the container with required environment variables:
+```bash
+docker run -d \
+  --name stfuel-backend \
+  -p 4000:4000 \
+  -e DATABASE_URL="postgresql://username:password@host:5432/stfuel_tracker" \
+  -e THETA_RPC_URLS="https://eth-rpc-api.thetatoken.org/rpc,https://eth-rpc-api-testnet.thetatoken.org/rpc" \
+  -e NODE_MANAGER_ADDRESS="0x..." \
+  -e STFUEL_ADDRESS="0x..." \
+  -e PORT="4000" \
+  -e NODE_ENV="production" \
+  -e LOG_LEVEL="info" \
+  -e START_BLOCK="0" \
+  stfuel-backend:latest
+```
+
+### Environment Variables
+
+All environment variables from `env.example` must be provided when running the container:
+
+**Required:**
+- `DATABASE_URL` - PostgreSQL connection string (external database)
+- `THETA_RPC_URLS` - Comma-separated RPC endpoints
+- `NODE_MANAGER_ADDRESS` - NodeManager contract address
+- `STFUEL_ADDRESS` - sTFuel contract address
+
+**Optional (with defaults):**
+- `PORT` - Server port (default: 4000)
+- `NODE_ENV` - Environment mode (default: development)
+- `LOG_LEVEL` - Logging level (default: info)
+- `START_BLOCK` - Starting block number (default: 0)
+- `RPC_RETRY_ATTEMPTS` - RPC retry attempts (default: 3)
+- `RPC_RETRY_DELAY` - RPC retry delay in ms (default: 5000)
+- `RPC_TIMEOUT` - RPC timeout in ms (default: 30000)
+- `BATCH_SIZE` - Block batch size (default: 10)
+- `MAX_CONCURRENT_BATCHES` - Max concurrent batches (default: 3)
+- `BATCH_DELAY` - Batch delay in ms (default: 100)
+
+### Using Environment File
+
+Alternatively, use an environment file:
+```bash
+docker run -d \
+  --name stfuel-backend \
+  -p 4000:4000 \
+  --env-file .env \
+  stfuel-backend:latest
+```
+
+### Health Checks
+
+The container includes a built-in health check that monitors the GraphQL endpoint. The health check:
+- Runs every 30 seconds
+- Has a 10 second timeout
+- Allows 40 seconds for initial startup
+- Retries 3 times before marking as unhealthy
+
+Check container health status:
+```bash
+docker ps  # Shows health status
+docker inspect --format='{{.State.Health.Status}}' stfuel-backend
+```
+
+### Database Migrations
+
+Database migrations run automatically on container startup (see `src/index.ts`). Ensure your PostgreSQL database is:
+- Accessible from the container network
+- Pre-configured with the correct connection string
+- Has appropriate permissions for the database user
+
+### Logs
+
+View container logs:
+```bash
+docker logs stfuel-backend
+docker logs -f stfuel-backend  # Follow logs
+```
+
+### Stopping the Container
+
+The container handles graceful shutdown on SIGTERM/SIGINT signals:
+```bash
+docker stop stfuel-backend  # Sends SIGTERM
+docker rm stfuel-backend     # Remove container
+```
+
 ## GraphQL API
 
 The service exposes a GraphQL API at `http://localhost:4000` with the following queries:
