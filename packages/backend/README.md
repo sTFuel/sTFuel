@@ -105,7 +105,23 @@ docker build -t stfuel-backend:latest -f packages/backend/Dockerfile packages/ba
 
 ### Running the Container
 
-Run the container with required environment variables:
+**Option A: Using Host Network Mode (Linux - Recommended for local PostgreSQL)**
+
+When running on Linux with PostgreSQL on the host machine, use `--network host` to allow the container to access the host's network directly:
+
+```bash
+docker run -d \
+  --name stfuel-backend \
+  --network host \
+  --env-file packages/backend/.env \
+  --restart unless-stopped \
+  stfuel-backend:latest
+```
+
+**Option B: Using Bridge Network with Port Mapping**
+
+For Docker Desktop (Mac/Windows) or when using a remote database:
+
 ```bash
 docker run -d \
   --name stfuel-backend \
@@ -118,8 +134,11 @@ docker run -d \
   -e NODE_ENV="production" \
   -e LOG_LEVEL="info" \
   -e START_BLOCK="0" \
+  --restart unless-stopped \
   stfuel-backend:latest
 ```
+
+**Note:** With `--network host`, the `-p 4000:4000` flag is not needed as the container uses the host's network directly. Your `.env` file can use `localhost` in the `DATABASE_URL` when using host network mode.
 
 ### Environment Variables
 
@@ -172,11 +191,20 @@ docker run -d \
 # Build without .env (default)
 docker build -t stfuel-backend:latest -f packages/backend/Dockerfile packages/backend/
 
-# Run with environment file
+# Run with environment file (Linux with host network)
+docker run -d \
+  --name stfuel-backend \
+  --network host \
+  --env-file packages/backend/.env \
+  --restart unless-stopped \
+  stfuel-backend:latest
+
+# Run with environment file (Docker Desktop or bridge network)
 docker run -d \
   --name stfuel-backend \
   -p 4000:4000 \
-  --env-file .env \
+  --env-file packages/backend/.env \
+  --restart unless-stopped \
   stfuel-backend:latest
 
 # Or use individual -e flags
@@ -185,6 +213,7 @@ docker run -d \
   -p 4000:4000 \
   -e DATABASE_URL="postgresql://..." \
   -e THETA_RPC_URLS="https://..." \
+  --restart unless-stopped \
   stfuel-backend:latest
 ```
 
@@ -210,6 +239,11 @@ Database migrations run automatically on container startup (see `src/index.ts`).
 - Accessible from the container network
 - Pre-configured with the correct connection string
 - Has appropriate permissions for the database user
+
+**Database Connection Notes:**
+- When using `--network host` (Linux): Use `localhost` in your `DATABASE_URL` (e.g., `postgresql://user:pass@localhost:5432/stfuel_tracker`)
+- When using bridge network: Use the host's IP address or `host.docker.internal` in your `DATABASE_URL`
+- Ensure PostgreSQL is configured to accept connections (check `postgresql.conf` and `pg_hba.conf`)
 
 ### Logs
 
