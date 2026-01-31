@@ -3,7 +3,7 @@ import { useState, useRef, useMemo } from 'react';
 import { useQuery } from '@apollo/client/react';
 import { GET_HOURLY_SNAPSHOTS, GET_DAILY_SNAPSHOTS, GET_EDGE_NODES, GET_USERS } from '@/graphql/queries';
 import StatsCard from '@/components/StatsCard';
-import { formatTFuel, formatTFuelBigInt, formatNumber, formatAddress, formatDate, parseTimestamp } from '@/lib/formatters';
+import { formatTFuel, formatTFuelBigInt, formatNumber, formatAddress, formatDate, parseTimestamp, calculateNetStaked } from '@/lib/formatters';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { useAPR } from '@/hooks/useAPR';
 import { useBlockchainData } from '@/hooks/useBlockchainData';
@@ -85,7 +85,16 @@ export default function Stats() {
     ? (hourlyData as any)?.dailySnapshots?.edges?.map((edge: any) => edge.node) || []
     : (hourlyData as any)?.hourlySnapshots?.edges?.map((edge: any) => edge.node) || [];
   
-  const edgeNodes = (edgeNodesData as any)?.edgeNodes?.edges?.map((edge: any) => edge.node) || [];
+  // Filter edge nodes: show if net staked > 0 OR (isLive and isActive)
+  const edgeNodes = useMemo(() => {
+    const allNodes = (edgeNodesData as any)?.edgeNodes?.edges?.map((edge: any) => edge.node) || [];
+    return allNodes.filter((node: any) => {
+      const netStaked = calculateNetStaked(node.totalStaked, node.totalUnstaked);
+      const hasStaked = BigInt(netStaked) > BigInt(0);
+      const isRunningAndActive = node.isLive === true && node.isActive === true;
+      return hasStaked || isRunningAndActive;
+    });
+  }, [edgeNodesData]);
   const users = (usersData as any)?.users?.edges?.map((edge: any) => edge.node) || [];
 
   // Process chart data
@@ -536,7 +545,7 @@ export default function Stats() {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-white">
-                          {formatTFuelBigInt(node.totalStaked)}
+                          {formatTFuelBigInt(calculateNetStaked(node.totalStaked, node.totalUnstaked))}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-text-secondary-dark">
                           {node.nodeType || 'N/A'}

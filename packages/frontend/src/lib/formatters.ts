@@ -182,3 +182,21 @@ export const getExplorerUrl = (txHash: string, chainId: number | null): string =
   // Default to testnet if chain ID is unknown
   return `https://testnet-explorer.thetatoken.org/tx/${txHash}`;
 };
+
+/**
+ * Calculates the net staked amount for an edge node (totalStaked - totalUnstaked)
+ * @param totalStaked Cumulative total of all staked amounts (string or bigint)
+ * @param totalUnstaked Cumulative total of all unstaked amounts (string or bigint)
+ * @returns The net staked amount as a string (BigInt string representation)
+ */
+export const calculateNetStaked = (totalStaked: string | bigint, totalUnstaked: string | bigint = '0'): string => {
+  try {
+    const staked = typeof totalStaked === 'bigint' ? totalStaked : BigInt(totalStaked || '0');
+    const unstaked = typeof totalUnstaked === 'bigint' ? totalUnstaked : BigInt(totalUnstaked || '0');
+    const net = staked >= unstaked ? staked - unstaked : BigInt(0);
+    return net.toString();
+  } catch (error) {
+    console.error('Error calculating net staked:', error);
+    return '0';
+  }
+};

@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import { adminApi } from '@/lib/adminApi';
 import { useAuth } from '@/contexts/AuthContext';
 import { getNodeManagerContract } from '@/contracts/sTFuelContract';
-import { formatTFuelBigInt } from '@/lib/formatters';
+import { formatTFuelBigInt, calculateNetStaked } from '@/lib/formatters';
 import type { NodeWithEdgeData } from './NodeList';
 
 interface RewardDistributionResponse {
@@ -387,7 +387,7 @@ export const NodeDetailModal = ({ node, onClose, onUpdated }: NodeDetailModalPro
                 <p className="text-sm text-gray-400">
                   Total Staked:{' '}
                   <span className="font-medium text-white">
-                    {formatTFuelBigInt(node.edgeNodeData.totalStaked)}
+                    {formatTFuelBigInt(calculateNetStaked(node.edgeNodeData.totalStaked, node.edgeNodeData.totalUnstaked))}
                   </span>
                 </p>
                 <p className="text-sm text-gray-400">
