@@ -654,13 +654,14 @@ export class SnapshotService {
       console.log(`Updating node statuses for ${servers.length} server(s)`);
 
       for (const server of servers) {
+        // Track which nodes we've seen on this server
+        const seenNodeIds = new Set<string>();
+        let nodes: NodeListItem[] = [];
+
         try {
           // Get list of nodes from the server
-          const nodes = await this.edgeNodeManagerService.listNodes(server.ipAddress);
+          nodes = await this.edgeNodeManagerService.listNodes(server.ipAddress);
           console.log(`Found ${nodes.length} node(s) on server ${server.ipAddress}`);
-
-          // Track which nodes we've seen on this server
-          const seenNodeIds = new Set<string>();
 
           for (const node of nodes) {
             try {
@@ -745,24 +746,27 @@ export class SnapshotService {
               );
             }
           }
-
-          // Update isRunning to false for nodes that exist in database but not on server
-          const allManagedNodesOnServer = await managedNodeRepo.find({
-            where: { serverId: server.id },
-          });
-
-          for (const managedNode of allManagedNodesOnServer) {
-            if (!seenNodeIds.has(managedNode.nodeId)) {
-              managedNode.isRunning = false;
-              await managedNodeRepo.save(managedNode);
-              console.log(
-                `Set isRunning=false for node ${managedNode.nodeId} on server ${server.ipAddress} (not found on server)`
-              );
-            }
-          }
         } catch (error) {
-          console.error(`Failed to update node statuses for server ${server.ipAddress}:`, error);
-          // Continue with other servers even if one fails
+          // Server is offline or listNodes() failed - set all nodes on this server to not running
+          console.error(`Server ${server.ipAddress} is offline or unreachable, setting all nodes to isRunning=false:`, error);
+        }
+
+        // Update isRunning to false for nodes that exist in database but not on server
+        // This handles both cases:
+        // 1. Server is online but node not found in the list
+        // 2. Server is offline (seenNodeIds will be empty, so all nodes will be set to false)
+        const allManagedNodesOnServer = await managedNodeRepo.find({
+          where: { serverId: server.id },
+        });
+
+        for (const managedNode of allManagedNodesOnServer) {
+          if (!seenNodeIds.has(managedNode.nodeId)) {
+            managedNode.isRunning = false;
+            await managedNodeRepo.save(managedNode);
+            console.log(
+              `Set isRunning=false for node ${managedNode.nodeId} on server ${server.ipAddress} (not found on server)`
+            );
+          }
         }
       }
 
